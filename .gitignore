@@ -14,3 +14,5 @@ venv/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+.coverage
+doc_progetto/
