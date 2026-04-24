@@ -1,6 +1,7 @@
 """Widget lista voci con azioni copia/esegui e ordinamento."""
 
 import logging
+from collections.abc import Callable
 
 import gi
 
@@ -20,8 +21,8 @@ class EntryRow(Gtk.Box):
     def __init__(
         self,
         entry: Entry,
-        on_click: callable,
-        _on_delete_request: callable | None = None,
+        on_click: Callable,
+        _on_delete_request: Callable | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.entry = entry
@@ -95,7 +96,7 @@ class EntryRow(Gtk.Box):
 class EntryListWidget(Gtk.Box):
     """Widget contenente la lista scrollabile delle voci con ordinamento."""
 
-    def __init__(self, on_entry_click: callable) -> None:
+    def __init__(self, on_entry_click: Callable) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self._on_entry_click = on_entry_click
         self._entries: list[Entry] = []

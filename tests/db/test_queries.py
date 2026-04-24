@@ -242,3 +242,54 @@ class TestEntryPosition:
 
         updated = entries.get_by_id(entry.id)
         assert updated.personal_pos == 42
+
+
+class TestSectionEdgeCases:
+    """Test edge case sezioni."""
+
+    def test_get_generale_id_creates_if_missing(self, db: Database) -> None:
+        """Se 'Generale' non esiste, get_generale_id la crea."""
+        # Elimina la sezione Generale
+        db.connection.execute("DELETE FROM sections WHERE name = 'Generale'")
+        db.connection.commit()
+
+        sections = SectionRepository(db.connection)
+        generale_id = sections.get_generale_id()
+        assert generale_id is not None
+
+        # Verifica che esista nel database
+        section = sections.get_by_id(generale_id)
+        assert section.name == "Generale"
+
+
+class TestEntryEdgeCases:
+    """Test edge case voci."""
+
+    def test_update_nonexistent_returns_none(self, entries: EntryRepository) -> None:
+        result = entries.update(
+            EntryUpdate(
+                id=9999,
+                name="ghost",
+                content="nope",
+                section_id=1,
+                type="prompt",
+            )
+        )
+        assert result is None
+
+    def test_get_all_with_invalid_sort_falls_back(
+        self,
+        entries: EntryRepository,
+        sections: SectionRepository,
+    ) -> None:
+        """Sort order sconosciuto usa il default."""
+        shell_id = sections.get_all()[0].id
+        entries.create(
+            EntryCreate(
+                name="a",
+                content="b",
+                section_id=shell_id,
+            )
+        )
+        result = entries.get_all(sort_order="nonexistent_sort")
+        assert len(result) == 1  # Funziona comunque con fallback

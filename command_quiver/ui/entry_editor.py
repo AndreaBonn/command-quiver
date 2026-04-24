@@ -1,6 +1,7 @@
 """Dialog modale per creazione e modifica voci."""
 
 import logging
+from collections.abc import Callable
 
 import gi
 
@@ -27,8 +28,8 @@ class EntryEditorDialog(Gtk.Window):
         parent: Gtk.Window,
         sections: list[Section],
         entry: Entry | None = None,
-        on_save: callable | None = None,
-        on_delete: callable | None = None,
+        on_save: Callable | None = None,
+        on_delete: Callable | None = None,
     ) -> None:
         super().__init__(
             title="Modifica voce" if entry else "Nuova voce",

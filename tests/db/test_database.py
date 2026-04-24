@@ -110,3 +110,21 @@ class TestDatabaseConnection:
     def test_double_close_no_error(self, db: Database) -> None:
         db.close()
         db.close()  # Non deve sollevare eccezioni
+
+    def test_initialize_with_corrupted_schema_recreates(self, db_path: Path) -> None:
+        """Test che initialize() ricrea il DB se executescript fallisce."""
+        db = Database(db_path=db_path)
+        db.initialize()  # Crea DB valido
+
+        # Corrompi: drop tabella sections per causare errore nel seed
+        db.connection.execute("DROP TABLE entries")
+        db.connection.execute("DROP TABLE sections")
+        db.connection.commit()
+        db.close()
+
+        # Re-inizializza: deve ricreare tutto
+        db2 = Database(db_path=db_path)
+        db2.initialize()
+        cursor = db2.connection.execute("SELECT COUNT(*) FROM sections")
+        assert cursor.fetchone()[0] == 4
+        db2.close()
