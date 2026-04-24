@@ -102,30 +102,55 @@ exec python3 -m command_quiver.main "\$@"
 WRAPPER
 chmod +x "$INSTALL_DIR/run.sh"
 
-# 6. Crea file .desktop per autostart
-cat > "$DESKTOP_FILE" << DESKTOP
-[Desktop Entry]
+# 6. Genera icone in hicolor per integrazione GNOME (dock, alt-tab)
+APP_ID="com.github.commandquiver"
+ICON_SIZES=(32 48 64 128)
+for SIZE in "${ICON_SIZES[@]}"; do
+    ICON_DIR="$HOME/.local/share/icons/hicolor/${SIZE}x${SIZE}/apps"
+    mkdir -p "$ICON_DIR"
+    PYTHONPATH="$INSTALL_DIR" python3 -c "
+from command_quiver.app import CommandQuiverApp
+from pathlib import Path
+CommandQuiverApp._generate_icon(path=Path('$ICON_DIR/$APP_ID.png'), size=$SIZE)
+" 2>/dev/null || warn "Generazione icona ${SIZE}x${SIZE} fallita (non critico)"
+done
+# Aggiorna cache icone
+gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor/" 2>/dev/null || true
+info "Icone installate in ~/.local/share/icons/hicolor/"
+
+# 7. Crea file .desktop per GNOME (applications + autostart)
+DESKTOP_CONTENT="[Desktop Entry]
 Type=Application
 Name=Command Quiver
 Exec=bash -c 'PYTHONPATH=$INSTALL_DIR python3 -m command_quiver.main'
-Icon=$INSTALL_DIR/command_quiver/assets/icon.png
+Icon=$APP_ID
 Comment=Accesso rapido a prompt e comandi shell
+StartupNotify=true
+Categories=Utility;"
+
+# .desktop in applications (dock, alt-tab, GNOME search)
+APPS_DESKTOP="$HOME/.local/share/applications/$APP_ID.desktop"
+echo "$DESKTOP_CONTENT" > "$APPS_DESKTOP"
+info "Desktop file installato: $APPS_DESKTOP"
+
+# .desktop in autostart (avvio automatico al login)
+cat > "$DESKTOP_FILE" << DESKTOP
+$DESKTOP_CONTENT
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
-Categories=Utility;
 DESKTOP
 
 info "File autostart creato: $DESKTOP_FILE"
 
-# 7. Crea symlink per avvio da terminale
+# 8. Crea symlink per avvio da terminale
 if [ -L "$SYMLINK" ] || [ -f "$SYMLINK" ]; then
     sudo rm -f "$SYMLINK"
 fi
 sudo ln -s "$INSTALL_DIR/run.sh" "$SYMLINK"
 info "Symlink creato: $SYMLINK"
 
-# 8. Inizializza database
+# 9. Inizializza database
 PYTHONPATH="$INSTALL_DIR" python3 -c "
 from command_quiver.db.database import Database
 db = Database()
@@ -134,17 +159,6 @@ db.close()
 print('Database inizializzato')
 "
 info "Database SQLite inizializzato"
-
-# 9. Genera icona se mancante
-if [ ! -f "$INSTALL_DIR/command_quiver/assets/icon.png" ]; then
-    PYTHONPATH="$INSTALL_DIR" python3 -c "
-from command_quiver.app import CommandQuiverApp
-from pathlib import Path
-icon_path = Path('$INSTALL_DIR/command_quiver/assets/icon.png')
-CommandQuiverApp._generate_icon(icon_path)
-print(f'Icona generata: {icon_path}')
-" 2>/dev/null || warn "Generazione icona fallita (non critico)"
-fi
 
 # 10. Riepilogo
 echo ""
@@ -160,7 +174,7 @@ echo -e "${GREEN}║${NC} Avvio:    ${YELLOW}command-quiver${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
 echo ""
 
-# 11. Avvia l'applicazione
+# 11. Avvia applicazione
 info "Avvio Command Quiver..."
 PYTHONPATH="$INSTALL_DIR" nohup python3 -m command_quiver.main &>/dev/null &
 info "Applicazione avviata in background (PID: $!)"

@@ -16,6 +16,7 @@ from pathlib import Path
 import gi
 
 gi.require_version("Gtk", "4.0")
+
 from gi.repository import Gio, GLib, Gtk
 
 from command_quiver import APP_ID
@@ -194,18 +195,22 @@ class CommandQuiverApp(Gtk.Application):
     # --- Icona ---
 
     @staticmethod
-    def _generate_icon(path: Path) -> None:
-        """Genera programmaticamente l'icona dell'app (lettera Q stilizzata)."""
+    def _generate_icon(path: Path, size: int = 32) -> None:
+        """Genera programmaticamente l'icona dell'app (lettera Q stilizzata).
+
+        Tutte le coordinate sono proporzionali a `size` per supportare
+        risoluzioni multiple (32, 48, 64, 128).
+        """
         import cairo
 
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        size = 32
+        s = size / 32.0  # fattore di scala rispetto al design base 32px
         surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
         ctx = cairo.Context(surface)
 
         # Sfondo arrotondato scuro
-        radius = 6
+        radius = 6 * s
         ctx.new_sub_path()
         ctx.arc(size - radius, radius, radius, -0.5 * 3.14159, 0)
         ctx.arc(size - radius, size - radius, radius, 0, 0.5 * 3.14159)
@@ -217,7 +222,7 @@ class CommandQuiverApp(Gtk.Application):
 
         # Lettera "Q" stilizzata in bianco
         ctx.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
-        ctx.set_font_size(20)
+        ctx.set_font_size(20 * s)
         ctx.set_source_rgb(0.95, 0.95, 0.95)
         extents = ctx.text_extents("Q")
         x = (size - extents.width) / 2 - extents.x_bearing
@@ -227,14 +232,14 @@ class CommandQuiverApp(Gtk.Application):
 
         # Freccia piccola (quiver = faretra) in colore accento
         ctx.set_source_rgb(0.35, 0.65, 0.95)
-        ctx.set_line_width(1.5)
-        ctx.move_to(20, 22)
-        ctx.line_to(27, 22)
+        ctx.set_line_width(1.5 * s)
+        ctx.move_to(20 * s, 22 * s)
+        ctx.line_to(27 * s, 22 * s)
         ctx.stroke()
-        ctx.move_to(24, 19)
-        ctx.line_to(27, 22)
-        ctx.line_to(24, 25)
+        ctx.move_to(24 * s, 19 * s)
+        ctx.line_to(27 * s, 22 * s)
+        ctx.line_to(24 * s, 25 * s)
         ctx.stroke()
 
         surface.write_to_png(str(path))
-        logger.info("Icona generata: %s", path)
+        logger.info("Icona generata: %s (%dx%d)", path, size, size)

@@ -29,11 +29,25 @@ if pgrep -f "command.quiver.*main.py" > /dev/null 2>&1; then
     sleep 1
 fi
 
-# 2. Rimuovi file .desktop autostart
+# 2. Rimuovi file .desktop (autostart + applications)
+APP_ID="com.github.commandquiver"
 if [ -f "$DESKTOP_FILE" ]; then
     rm -f "$DESKTOP_FILE"
     info "File autostart rimosso"
 fi
+APPS_DESKTOP="$HOME/.local/share/applications/$APP_ID.desktop"
+if [ -f "$APPS_DESKTOP" ]; then
+    rm -f "$APPS_DESKTOP"
+    info "Desktop file rimosso: $APPS_DESKTOP"
+fi
+
+# 2b. Rimuovi icone da hicolor
+for SIZE in 32 48 64 128; do
+    ICON="$HOME/.local/share/icons/hicolor/${SIZE}x${SIZE}/apps/$APP_ID.png"
+    [ -f "$ICON" ] && rm -f "$ICON"
+done
+gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor/" 2>/dev/null || true
+info "Icone rimosse"
 
 # 3. Rimuovi symlink
 if [ -L "$SYMLINK" ]; then
