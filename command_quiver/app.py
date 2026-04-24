@@ -236,9 +236,9 @@ class StatusNotifierItem:
             layout = self._build_menu_layout()
             invocation.return_value(GLib.Variant("(u(ia{sv}av))", (self._menu_revision, layout)))
         elif method == "GetGroupProperties":
-            invocation.return_value(GLib.Variant("(a(ia{sv}),)", ([],)))
+            invocation.return_value(GLib.Variant("(a(ia{sv}))", ([],)))
         elif method == "GetProperty":
-            invocation.return_value(GLib.Variant("(v,)", (GLib.Variant("s", ""),)))
+            invocation.return_value(GLib.Variant("(v)", (GLib.Variant("s", ""),)))
         elif method == "Event":
             item_id = params[0]
             event_id = params[1]
@@ -246,7 +246,7 @@ class StatusNotifierItem:
                 self._handle_menu_click(item_id)
             invocation.return_value(None)
         elif method == "AboutToShow":
-            invocation.return_value(GLib.Variant("(b,)", (False,)))
+            invocation.return_value(GLib.Variant("(b)", (False,)))
         else:
             invocation.return_value(None)
 

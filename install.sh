@@ -31,6 +31,28 @@ if [[ "$ID" != "ubuntu" && "$ID_LIKE" != *"ubuntu"* ]]; then
 fi
 info "Sistema rilevato: $PRETTY_NAME"
 
+# 1b. Verifica estensione GNOME AppIndicator (necessaria per il tray icon)
+if command -v gnome-extensions &>/dev/null; then
+    if gnome-extensions list --enabled 2>/dev/null | grep -qi "appindicator"; then
+        info "Estensione AppIndicator attiva"
+    else
+        warn "L'estensione 'AppIndicator and KStatusNotifierItem Support' non è attiva."
+        warn "Senza di essa l'icona nella barra superiore non sarà visibile."
+        warn ""
+        warn "Per installarla/attivarla:"
+        warn "  sudo apt install gnome-shell-extension-appindicator"
+        warn "  gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com"
+        warn "  (potrebbe servire un logout/login)"
+        warn ""
+        read -r -p "Continuare comunque l'installazione? [S/n] " response
+        if [[ "$response" =~ ^[nN]$ ]]; then
+            error "Installazione annullata. Attiva l'estensione e riprova."
+        fi
+    fi
+else
+    warn "gnome-extensions non trovato — impossibile verificare AppIndicator"
+fi
+
 # 2. Installa dipendenze di sistema
 info "Installazione dipendenze di sistema..."
 DEPS=(
@@ -62,15 +84,20 @@ mkdir -p "$CONFIG_DIR"
 mkdir -p "$AUTOSTART_DIR"
 info "Directory create"
 
-# 4. Copia file dell'applicazione
+# 4. Copia il package Python mantenendo la struttura
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cp -r "$SCRIPT_DIR/command_quiver/"* "$INSTALL_DIR/"
-info "File copiati in $INSTALL_DIR"
+# Rimuovi installazione precedente del package (se esiste)
+rm -rf "$INSTALL_DIR/command_quiver"
+# Copia il package come sottodirectory → preserva gli import
+cp -r "$SCRIPT_DIR/command_quiver" "$INSTALL_DIR/command_quiver"
+info "Package copiato in $INSTALL_DIR/command_quiver"
 
 # 5. Crea entry point wrapper
-cat > "$INSTALL_DIR/run.sh" << 'WRAPPER'
+# PYTHONPATH punta a INSTALL_DIR così Python trova il package command_quiver
+cat > "$INSTALL_DIR/run.sh" << WRAPPER
 #!/usr/bin/env bash
-exec python3 "$(dirname "$0")/main.py" "$@"
+export PYTHONPATH="$INSTALL_DIR:\${PYTHONPATH:-}"
+exec python3 -m command_quiver.main "\$@"
 WRAPPER
 chmod +x "$INSTALL_DIR/run.sh"
 
@@ -79,8 +106,8 @@ cat > "$DESKTOP_FILE" << DESKTOP
 [Desktop Entry]
 Type=Application
 Name=Command Quiver
-Exec=python3 $INSTALL_DIR/main.py
-Icon=$INSTALL_DIR/assets/icon.png
+Exec=bash -c 'PYTHONPATH=$INSTALL_DIR python3 -m command_quiver.main'
+Icon=$INSTALL_DIR/command_quiver/assets/icon.png
 Comment=Accesso rapido a prompt e comandi shell
 Hidden=false
 NoDisplay=false
@@ -97,11 +124,9 @@ fi
 sudo ln -s "$INSTALL_DIR/run.sh" "$SYMLINK"
 info "Symlink creato: $SYMLINK"
 
-# 8. Inizializza database (avviando brevemente l'app con flag init)
-python3 -c "
-import sys
-sys.path.insert(0, '$INSTALL_DIR')
-from db.database import Database
+# 8. Inizializza database
+PYTHONPATH="$INSTALL_DIR" python3 -c "
+from command_quiver.db.database import Database
 db = Database()
 db.initialize()
 db.close()
@@ -110,13 +135,11 @@ print('Database inizializzato')
 info "Database SQLite inizializzato"
 
 # 9. Genera icona se mancante
-if [ ! -f "$INSTALL_DIR/assets/icon.png" ]; then
-    python3 -c "
-import sys
-sys.path.insert(0, '$INSTALL_DIR')
-from app import CommandQuiverApp
+if [ ! -f "$INSTALL_DIR/command_quiver/assets/icon.png" ]; then
+    PYTHONPATH="$INSTALL_DIR" python3 -c "
+from command_quiver.app import CommandQuiverApp
 from pathlib import Path
-icon_path = Path('$INSTALL_DIR/assets/icon.png')
+icon_path = Path('$INSTALL_DIR/command_quiver/assets/icon.png')
 CommandQuiverApp._generate_icon(icon_path)
 print(f'Icona generata: {icon_path}')
 " 2>/dev/null || warn "Generazione icona fallita (non critico)"
@@ -138,5 +161,5 @@ echo ""
 
 # 11. Avvia l'applicazione
 info "Avvio Command Quiver..."
-nohup python3 "$INSTALL_DIR/main.py" &>/dev/null &
+PYTHONPATH="$INSTALL_DIR" nohup python3 -m command_quiver.main &>/dev/null &
 info "Applicazione avviata in background (PID: $!)"
