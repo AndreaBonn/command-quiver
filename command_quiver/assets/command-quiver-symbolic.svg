@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Faretra (quiver) stilizzata -->
+  <!-- Contenitore faretra -->
+  <rect x="4" y="1" width="5" height="12" rx="1.5" ry="1.5" fill="none" stroke="#bebebe" stroke-width="1.2"/>
+  <!-- Frecce nella faretra -->
+  <line x1="6" y1="1" x2="6" y2="5" stroke="#bebebe" stroke-width="1" stroke-linecap="round"/>
+  <polyline points="4.5,3 6,1 7.5,3" fill="none" stroke="#bebebe" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="8" y1="1.5" x2="8" y2="5.5" stroke="#bebebe" stroke-width="1" stroke-linecap="round"/>
+  <polyline points="6.5,3.5 8,1.5 9.5,3.5" fill="none" stroke="#bebebe" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Cinghia -->
+  <line x1="5" y1="13" x2="3" y2="15" stroke="#bebebe" stroke-width="1" stroke-linecap="round"/>
+  <line x1="8" y1="13" x2="10" y2="15" stroke="#bebebe" stroke-width="1" stroke-linecap="round"/>
+</svg>

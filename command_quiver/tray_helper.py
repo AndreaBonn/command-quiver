@@ -61,26 +61,21 @@ def main() -> None:
     # Gestione segnale SIGTERM per chiusura ordinata
     signal.signal(signal.SIGTERM, lambda *_: Gtk.main_quit())
 
-    # Trova l'icona
-    icon_path = Path(__file__).resolve().parent / "assets" / "icon.png"
-    if not icon_path.exists():
+    # Trova la directory assets per l'icona simbolica
+    assets_dir = Path(__file__).resolve().parent / "assets"
+    if not assets_dir.exists():
         # Fallback: cerca nell'installazione
-        icon_path = (
-            Path.home()
-            / ".local"
-            / "share"
-            / "command-quiver"
-            / "command_quiver"
-            / "assets"
-            / "icon.png"
+        assets_dir = (
+            Path.home() / ".local" / "share" / "command-quiver" / "command_quiver" / "assets"
         )
 
-    # Crea l'indicatore
+    # Crea l'indicatore con icona simbolica (scala come le altre icone GNOME)
     indicator = AyatanaAppIndicator3.Indicator.new(
         "command-quiver",
-        str(icon_path) if icon_path.exists() else "application-default-icon",
+        "command-quiver-symbolic",
         AyatanaAppIndicator3.IndicatorCategory.APPLICATION_STATUS,
     )
+    indicator.set_icon_theme_path(str(assets_dir))
     indicator.set_status(AyatanaAppIndicator3.IndicatorStatus.ACTIVE)
     indicator.set_title("Command Quiver")
 
