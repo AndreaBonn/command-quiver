@@ -5,7 +5,7 @@ processo separato (tray_helper.py) che usa GTK3 + AyatanaAppIndicator3,
 perché GTK3 e GTK4 non possono coesistere nello stesso processo.
 
 La comunicazione avviene via D-Bus:
-- tray_helper → app: Toggle, NewEntry, Quit
+- tray_helper → app: Toggle, NewEntry, ChangeLanguage, Quit
 """
 
 import logging
@@ -32,6 +32,9 @@ _APP_DBUS_XML = """
   <interface name="com.github.commandquiver.App">
     <method name="Toggle"/>
     <method name="NewEntry"/>
+    <method name="ChangeLanguage">
+      <arg type="s" name="lang" direction="in"/>
+    </method>
     <method name="Quit"/>
   </interface>
 </node>
@@ -69,6 +72,11 @@ class CommandQuiverApp(Gtk.Application):
 
         # Impostazioni
         self._settings = load_settings()
+
+        # Inizializza il sistema di traduzione
+        from command_quiver.core.i18n import init as i18n_init
+
+        i18n_init(self._settings.language)
 
         # Registra interfaccia D-Bus per ricevere comandi dal tray helper
         self._register_dbus_interface()
@@ -121,6 +129,9 @@ class CommandQuiverApp(Gtk.Application):
             self._toggle_sidebar()
         elif method == "NewEntry":
             self._open_new_entry()
+        elif method == "ChangeLanguage":
+            lang = _params.unpack()[0] if _params else "it"
+            self._change_language(lang)
         elif method == "Quit":
             self._quit_app()
 
@@ -176,6 +187,30 @@ class CommandQuiverApp(Gtk.Application):
             self._sidebar.present()
 
         GLib.idle_add(self._sidebar.open_new_entry_dialog)
+
+    def _change_language(self, lang: str) -> None:
+        """Cambia la lingua dell'interfaccia e ricostruisce la sidebar."""
+        from command_quiver.core.i18n import get_language
+        from command_quiver.core.i18n import init as i18n_init
+
+        if lang == get_language():
+            return
+
+        i18n_init(lang)
+        self._settings.language = lang
+        save_settings(self._settings)
+
+        # Ricostruisce la sidebar con le nuove traduzioni
+        if self._sidebar is not None:
+            was_visible = self._sidebar.get_visible()
+            self.remove_window(self._sidebar)
+            self._sidebar.destroy()
+            self._sidebar = SidebarPanel(db=self._db, settings=self._settings)
+            self.add_window(self._sidebar)
+            if was_visible:
+                self._sidebar.present()
+
+        logger.info("Lingua cambiata: %s", lang)
 
     def _quit_app(self) -> None:
         """Chiusura ordinata dell'applicazione."""

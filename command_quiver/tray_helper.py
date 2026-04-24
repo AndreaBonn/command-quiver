@@ -5,9 +5,9 @@ Processo separato dall'app principale GTK4 per evitare conflitti
 tra GTK3 (richiesto da AppIndicator3) e GTK4 (usato dalla UI).
 
 Comunica con l'app principale via D-Bus:
-- Click sinistro / "Mostra" → invia segnale Activate all'app
-- "Nuova voce" → invia segnale NewEntry all'app
-- "Esci" → invia segnale Quit all'app
+- Click sinistro / "Mostra" -> invia segnale Activate all'app
+- "Nuova voce" -> invia segnale NewEntry all'app
+- "Esci" -> invia segnale Quit all'app
 """
 
 import signal
@@ -19,6 +19,10 @@ import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("AyatanaAppIndicator3", "0.1")
 from gi.repository import AyatanaAppIndicator3, Gio, GLib, Gtk
+
+from command_quiver.core.i18n import LANGUAGE_LABELS, SUPPORTED_LANGUAGES, Language, t
+from command_quiver.core.i18n import init as i18n_init
+from command_quiver.core.settings import load_settings
 
 APP_ID = "com.github.commandquiver"
 DBUS_PATH = "/com/github/commandquiver"
@@ -57,9 +61,34 @@ def on_quit(_item) -> None:
     Gtk.main_quit()
 
 
+def _on_language_selected(item: Gtk.RadioMenuItem, lang: Language) -> None:
+    """Invia il cambio lingua all'app principale via D-Bus."""
+    if not item.get_active():
+        return
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        bus.call_sync(
+            APP_ID,
+            DBUS_PATH,
+            DBUS_INTERFACE,
+            "ChangeLanguage",
+            GLib.Variant("(s)", (lang,)),
+            None,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            None,
+        )
+    except GLib.Error as e:
+        print(f"Errore D-Bus ChangeLanguage: {e.message}", file=sys.stderr)
+
+
 def main() -> None:
     # Gestione segnale SIGTERM per chiusura ordinata
     signal.signal(signal.SIGTERM, lambda *_: Gtk.main_quit())
+
+    # Carica impostazioni e inizializza i18n
+    settings = load_settings()
+    i18n_init(settings.language)
 
     # Trova la directory assets per l'icona simbolica
     assets_dir = Path(__file__).resolve().parent / "assets"
@@ -82,24 +111,44 @@ def main() -> None:
     # Menu contestuale
     menu = Gtk.Menu()
 
-    item_show = Gtk.MenuItem(label="Mostra/Nascondi")
+    item_show = Gtk.MenuItem(label=t("tray.toggle"))
     item_show.connect("activate", on_show)
     menu.append(item_show)
 
-    item_new = Gtk.MenuItem(label="Nuova voce")
+    item_new = Gtk.MenuItem(label=t("tray.new_entry"))
     item_new.connect("activate", on_new_entry)
     menu.append(item_new)
 
     menu.append(Gtk.SeparatorMenuItem())
 
-    item_quit = Gtk.MenuItem(label="Esci")
+    # Sottomenu lingua
+    lang_item = Gtk.MenuItem(label=t("tray.language"))
+    lang_submenu = Gtk.Menu()
+
+    group: Gtk.RadioMenuItem | None = None
+    for lang in SUPPORTED_LANGUAGES:
+        if group is None:
+            radio = Gtk.RadioMenuItem(label=LANGUAGE_LABELS[lang])
+            group = radio
+        else:
+            radio = Gtk.RadioMenuItem(label=LANGUAGE_LABELS[lang], group=group)
+        radio.set_active(lang == settings.language)
+        radio.connect("toggled", _on_language_selected, lang)
+        lang_submenu.append(radio)
+
+    lang_item.set_submenu(lang_submenu)
+    menu.append(lang_item)
+
+    menu.append(Gtk.SeparatorMenuItem())
+
+    item_quit = Gtk.MenuItem(label=t("tray.quit"))
     item_quit.connect("activate", on_quit)
     menu.append(item_quit)
 
     menu.show_all()
     indicator.set_menu(menu)
 
-    # Click sinistro → apre/chiude sidebar
+    # Click sinistro -> apre/chiude sidebar
     indicator.set_secondary_activate_target(item_show)
 
     Gtk.main()

@@ -20,6 +20,14 @@ class Settings:
     window_width: int = 520
     window_height: int = 600
     theme: str = "auto"
+    language: str = "it"
+
+    VALID_LANGUAGES: tuple[str, ...] = field(
+        default=("it", "en"),
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     # Valori ammessi per sort_order
     VALID_SORT_ORDERS: tuple[str, ...] = field(
@@ -33,6 +41,8 @@ class Settings:
         """Valida i valori dopo l'inizializzazione."""
         if self.sort_order not in self.VALID_SORT_ORDERS:
             self.sort_order = "chronological_desc"
+        if self.language not in self.VALID_LANGUAGES:
+            self.language = "it"
         if self.window_width < 300:
             self.window_width = 520
         if self.window_height < 300:
@@ -68,6 +78,7 @@ def save_settings(settings: Settings, config_path: Path | None = None) -> None:
     data = asdict(settings)
     # Rimuovi campi non serializzabili
     data.pop("VALID_SORT_ORDERS", None)
+    data.pop("VALID_LANGUAGES", None)
 
     path.write_text(
         json.dumps(data, indent=2, ensure_ascii=False) + "\n",

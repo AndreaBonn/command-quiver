@@ -8,6 +8,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk
 
+from command_quiver.core.i18n import t
 from command_quiver.db.queries import Section
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class SectionCreateDialog(Gtk.Window):
         on_create: Callable,
     ) -> None:
         super().__init__(
-            title="Nuova sezione",
+            title=t("section.title_new"),
             transient_for=parent,
             modal=True,
             default_width=350,
@@ -41,11 +42,11 @@ class SectionCreateDialog(Gtk.Window):
         self.set_child(box)
 
         # Campo nome
-        label = Gtk.Label(label="Nome sezione", xalign=0)
+        label = Gtk.Label(label=t("section.name_label"), xalign=0)
         label.add_css_class("caption")
         box.append(label)
 
-        self._name_entry = Gtk.Entry(placeholder_text="Nome della sezione...")
+        self._name_entry = Gtk.Entry(placeholder_text=t("section.name_placeholder"))
         self._name_entry.connect("activate", lambda _: self._do_create())
         box.append(self._name_entry)
 
@@ -57,11 +58,11 @@ class SectionCreateDialog(Gtk.Window):
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         btn_box.set_halign(Gtk.Align.END)
 
-        cancel_btn = Gtk.Button(label="Annulla")
+        cancel_btn = Gtk.Button(label=t("common.cancel"))
         cancel_btn.connect("clicked", lambda _: self.close())
         btn_box.append(cancel_btn)
 
-        create_btn = Gtk.Button(label="Crea")
+        create_btn = Gtk.Button(label=t("section.btn_create"))
         create_btn.add_css_class("suggested-action")
         create_btn.connect("clicked", lambda _: self._do_create())
         btn_box.append(create_btn)
@@ -72,7 +73,7 @@ class SectionCreateDialog(Gtk.Window):
         """Valida e crea la sezione."""
         name = self._name_entry.get_text().strip()
         if not name:
-            self._error_label.set_label("Il nome è obbligatorio")
+            self._error_label.set_label(t("section.error_name_required"))
             self._error_label.set_visible(True)
             return
 
@@ -90,7 +91,7 @@ class SectionRenameDialog(Gtk.Window):
         on_rename: Callable,
     ) -> None:
         super().__init__(
-            title="Rinomina sezione",
+            title=t("section.title_rename"),
             transient_for=parent,
             modal=True,
             default_width=350,
@@ -109,7 +110,7 @@ class SectionRenameDialog(Gtk.Window):
         box.set_margin_end(16)
         self.set_child(box)
 
-        label = Gtk.Label(label="Nuovo nome", xalign=0)
+        label = Gtk.Label(label=t("section.new_name_label"), xalign=0)
         label.add_css_class("caption")
         box.append(label)
 
@@ -121,11 +122,11 @@ class SectionRenameDialog(Gtk.Window):
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         btn_box.set_halign(Gtk.Align.END)
 
-        cancel_btn = Gtk.Button(label="Annulla")
+        cancel_btn = Gtk.Button(label=t("common.cancel"))
         cancel_btn.connect("clicked", lambda _: self.close())
         btn_box.append(cancel_btn)
 
-        rename_btn = Gtk.Button(label="Rinomina")
+        rename_btn = Gtk.Button(label=t("section.btn_rename"))
         rename_btn.add_css_class("suggested-action")
         rename_btn.connect("clicked", lambda _: self._do_rename())
         btn_box.append(rename_btn)
@@ -149,17 +150,17 @@ def show_delete_section_dialog(
 ) -> None:
     """Mostra un dialog di conferma eliminazione sezione."""
     dialog = Gtk.AlertDialog(
-        message=f'Eliminare la sezione "{section.name}"?',
-        detail="Le voci contenute verranno spostate nella sezione 'Generale'.",
+        message=t("section.confirm_delete_title", name=section.name),
+        detail=t("section.confirm_delete_detail"),
     )
-    dialog.set_buttons(["Annulla", "Elimina"])
+    dialog.set_buttons([t("common.cancel"), t("common.delete")])
     dialog.set_cancel_button(0)
     dialog.set_default_button(0)
 
     def _on_response(dialog_obj: Gtk.AlertDialog, result) -> None:
         try:
             choice = dialog_obj.choose_finish(result)
-            if choice == 1:  # "Elimina"
+            if choice == 1:
                 on_confirm(section.id)
         except Exception:
             logger.exception("Errore nella conferma eliminazione sezione")

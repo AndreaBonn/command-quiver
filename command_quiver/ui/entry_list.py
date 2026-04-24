@@ -10,6 +10,7 @@ from gi.repository import GLib, Gtk
 
 from command_quiver.core.clipboard import copy_to_clipboard
 from command_quiver.core.executor import TerminalNotFoundError, execute_in_terminal
+from command_quiver.core.i18n import t
 from command_quiver.db.queries import Entry
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class EntryRow(Gtk.Box):
         self.set_margin_bottom(4)
 
         # Nome voce (troncato a 40 caratteri)
-        display_name = entry.name[:40] + "…" if len(entry.name) > 40 else entry.name
+        display_name = entry.name[:40] + "\u2026" if len(entry.name) > 40 else entry.name
         name_label = Gtk.Label(label=display_name, xalign=0)
         name_label.set_hexpand(True)
         name_label.add_css_class("entry-name")
@@ -47,7 +48,10 @@ class EntryRow(Gtk.Box):
         self.append(badge)
 
         # Bottone copia
-        self._copy_btn = Gtk.Button(icon_name="edit-copy-symbolic", tooltip_text="Copia")
+        self._copy_btn = Gtk.Button(
+            icon_name="edit-copy-symbolic",
+            tooltip_text=t("entry_list.copy_tooltip"),
+        )
         self._copy_btn.add_css_class("flat")
         self._copy_btn.connect("clicked", self._on_copy)
         self.append(self._copy_btn)
@@ -56,7 +60,7 @@ class EntryRow(Gtk.Box):
         if entry.type == "shell":
             exec_btn = Gtk.Button(
                 icon_name="media-playback-start-symbolic",
-                tooltip_text="Esegui in terminale",
+                tooltip_text=t("entry_list.execute_tooltip"),
             )
             exec_btn.add_css_class("flat")
             exec_btn.connect("clicked", self._on_execute)
@@ -89,7 +93,10 @@ class EntryRow(Gtk.Box):
         if not isinstance(window, Gtk.Window):
             return
 
-        dialog = Gtk.AlertDialog(message="Terminale non trovato", detail=message)
+        dialog = Gtk.AlertDialog(
+            message=t("entry_list.terminal_not_found"),
+            detail=message,
+        )
         dialog.show(window)
 
 
@@ -129,11 +136,11 @@ class EntryListWidget(Gtk.Box):
         icon.add_css_class("dim-label")
         box.append(icon)
 
-        label = Gtk.Label(label="Nessuna voce trovata")
+        label = Gtk.Label(label=t("entry_list.empty_title"))
         label.add_css_class("dim-label")
         box.append(label)
 
-        hint = Gtk.Label(label='Premi "+ Nuova voce" per iniziare')
+        hint = Gtk.Label(label=t("entry_list.empty_hint"))
         hint.add_css_class("dim-label")
         hint.add_css_class("caption")
         box.append(hint)
@@ -160,7 +167,7 @@ class EntryListWidget(Gtk.Box):
             self._list_box.append(row_widget)
 
     def _on_row_activated(self, _list_box: Gtk.ListBox, row: Gtk.ListBoxRow) -> None:
-        """Gestisce il click su una riga → apre l'editor."""
+        """Gestisce il click su una riga -> apre l'editor."""
         child = row.get_child()
         if isinstance(child, EntryRow):
             self._on_entry_click(child.entry)

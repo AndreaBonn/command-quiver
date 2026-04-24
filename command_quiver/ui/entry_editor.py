@@ -9,6 +9,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gtk
 
 from command_quiver.core.clipboard import copy_to_clipboard
+from command_quiver.core.i18n import t
 from command_quiver.db.queries import Entry, EntryCreate, EntryUpdate, Section
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class EntryEditorDialog(Gtk.Window):
         on_delete: Callable | None = None,
     ) -> None:
         super().__init__(
-            title="Modifica voce" if entry else "Nuova voce",
+            title=t("editor.title_edit") if entry else t("editor.title_new"),
             transient_for=parent,
             modal=True,
             default_width=500,
@@ -92,12 +93,12 @@ class EntryEditorDialog(Gtk.Window):
 
         # --- Campo Nome ---
         name_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        name_label = Gtk.Label(label="Nome", xalign=0)
+        name_label = Gtk.Label(label=t("editor.name_label"), xalign=0)
         name_label.add_css_class("caption")
         name_box.append(name_label)
 
         self._name_entry = Gtk.Entry(
-            placeholder_text="Nome della voce...",
+            placeholder_text=t("editor.name_placeholder"),
             max_length=100,
         )
         name_box.append(self._name_entry)
@@ -109,11 +110,11 @@ class EntryEditorDialog(Gtk.Window):
 
         # --- Tipo (radio button) ---
         type_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
-        type_label = Gtk.Label(label="Tipo:")
+        type_label = Gtk.Label(label=t("editor.type_label"))
         type_box.append(type_label)
 
-        self._radio_prompt = Gtk.CheckButton(label="Prompt AI")
-        self._radio_shell = Gtk.CheckButton(label="Comando Shell")
+        self._radio_prompt = Gtk.CheckButton(label=t("editor.type_prompt"))
+        self._radio_shell = Gtk.CheckButton(label=t("editor.type_shell"))
         self._radio_shell.set_group(self._radio_prompt)
         self._radio_prompt.set_active(True)
         type_box.append(self._radio_prompt)
@@ -122,7 +123,7 @@ class EntryEditorDialog(Gtk.Window):
 
         # --- Sezione (dropdown) ---
         section_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        section_label = Gtk.Label(label="Sezione", xalign=0)
+        section_label = Gtk.Label(label=t("editor.section_label"), xalign=0)
         section_label.add_css_class("caption")
         section_box.append(section_label)
 
@@ -134,7 +135,7 @@ class EntryEditorDialog(Gtk.Window):
 
         # --- Contenuto (text area multiriga) ---
         content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        content_label = Gtk.Label(label="Contenuto", xalign=0)
+        content_label = Gtk.Label(label=t("editor.content_label"), xalign=0)
         content_label.add_css_class("caption")
         content_box.append(content_label)
 
@@ -161,11 +162,11 @@ class EntryEditorDialog(Gtk.Window):
 
         # --- Tag ---
         tag_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        tag_label = Gtk.Label(label="Tag (separati da virgola)", xalign=0)
+        tag_label = Gtk.Label(label=t("editor.tags_label"), xalign=0)
         tag_label.add_css_class("caption")
         tag_box.append(tag_label)
 
-        self._tag_entry = Gtk.Entry(placeholder_text="es: git, deploy, backup")
+        self._tag_entry = Gtk.Entry(placeholder_text=t("editor.tags_placeholder"))
         tag_box.append(self._tag_entry)
         main_box.append(tag_box)
 
@@ -175,22 +176,22 @@ class EntryEditorDialog(Gtk.Window):
 
         # Elimina (solo in modifica, allineato a sinistra)
         if self._is_edit:
-            delete_btn = Gtk.Button(label="Elimina")
+            delete_btn = Gtk.Button(label=t("editor.btn_delete"))
             delete_btn.add_css_class("destructive-action")
             delete_btn.connect("clicked", self._on_delete_clicked)
             delete_btn.set_hexpand(True)
             delete_btn.set_halign(Gtk.Align.START)
             button_box.append(delete_btn)
 
-        cancel_btn = Gtk.Button(label="Annulla")
+        cancel_btn = Gtk.Button(label=t("editor.btn_cancel"))
         cancel_btn.connect("clicked", lambda _: self.close())
         button_box.append(cancel_btn)
 
-        save_copy_btn = Gtk.Button(label="Salva e Copia")
+        save_copy_btn = Gtk.Button(label=t("editor.btn_save_copy"))
         save_copy_btn.connect("clicked", lambda _: self._do_save_and_copy())
         button_box.append(save_copy_btn)
 
-        save_btn = Gtk.Button(label="Salva")
+        save_btn = Gtk.Button(label=t("editor.btn_save"))
         save_btn.add_css_class("suggested-action")
         save_btn.connect("clicked", lambda _: self._do_save())
         button_box.append(save_btn)
@@ -229,7 +230,7 @@ class EntryEditorDialog(Gtk.Window):
         # Validazione nome
         name = self._name_entry.get_text().strip()
         if not name:
-            self._name_error.set_label("Il nome è obbligatorio")
+            self._name_error.set_label(t("editor.error_name_required"))
             self._name_error.set_visible(True)
             self._name_entry.add_css_class("error")
             is_valid = False
@@ -242,7 +243,7 @@ class EntryEditorDialog(Gtk.Window):
         start, end = buffer.get_bounds()
         content = buffer.get_text(start, end, include_hidden_chars=False).strip()
         if not content:
-            self._content_error.set_label("Il contenuto è obbligatorio")
+            self._content_error.set_label(t("editor.error_content_required"))
             self._content_error.set_visible(True)
             self._content_view.add_css_class("error")
             is_valid = False
@@ -313,10 +314,10 @@ class EntryEditorDialog(Gtk.Window):
     def _on_delete_clicked(self, _button: Gtk.Button) -> None:
         """Richiede conferma prima di eliminare la voce."""
         dialog = Gtk.AlertDialog(
-            message="Eliminare questa voce?",
-            detail=f'La voce "{self._entry.name}" verrà eliminata definitivamente.',
+            message=t("editor.confirm_delete_title"),
+            detail=t("editor.confirm_delete_detail", name=self._entry.name),
         )
-        dialog.set_buttons(["Annulla", "Elimina"])
+        dialog.set_buttons([t("common.cancel"), t("common.delete")])
         dialog.set_cancel_button(0)
         dialog.set_default_button(0)
         dialog.choose(self, None, self._on_delete_confirmed)

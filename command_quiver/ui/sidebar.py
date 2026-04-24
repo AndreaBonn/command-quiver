@@ -7,6 +7,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gtk
 
+from command_quiver.core.i18n import t
 from command_quiver.core.settings import Settings, save_settings
 from command_quiver.db.database import Database
 from command_quiver.db.queries import (
@@ -148,7 +149,7 @@ class SidebarPanel(Gtk.Window):
         self.set_child(main_box)
 
         # --- Barra di ricerca ---
-        self._search_entry = Gtk.SearchEntry(placeholder_text="Cerca per nome...")
+        self._search_entry = Gtk.SearchEntry(placeholder_text=t("sidebar.search_placeholder"))
         self._search_entry.add_css_class("search-entry")
         self._search_entry.connect("search-changed", self._on_search_changed)
         main_box.append(self._search_entry)
@@ -175,10 +176,16 @@ class SidebarPanel(Gtk.Window):
         sort_box.set_margin_top(4)
         sort_box.set_margin_bottom(4)
 
-        sort_label = Gtk.Label(label="Ordina:", xalign=0)
+        sort_label = Gtk.Label(label=t("sidebar.sort_label"), xalign=0)
         sort_box.append(sort_label)
 
-        sort_options = ["Recenti ↓", "Vecchi ↑", "A → Z", "Z → A", "Personale"]
+        sort_options = [
+            t("sidebar.sort_recent_desc"),
+            t("sidebar.sort_oldest_asc"),
+            t("sidebar.sort_alpha_asc"),
+            t("sidebar.sort_alpha_desc"),
+            t("sidebar.sort_personal"),
+        ]
         self._sort_dropdown = Gtk.DropDown()
         self._sort_dropdown.set_model(Gtk.StringList.new(sort_options))
         self._sort_dropdown.set_hexpand(True)
@@ -205,7 +212,7 @@ class SidebarPanel(Gtk.Window):
         bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         bottom_bar.add_css_class("bottom-bar")
 
-        new_btn = Gtk.Button(label="+ Nuova voce")
+        new_btn = Gtk.Button(label=t("sidebar.new_entry"))
         new_btn.add_css_class("suggested-action")
         new_btn.connect("clicked", self._on_new_entry)
         new_btn.set_hexpand(True)
@@ -217,7 +224,7 @@ class SidebarPanel(Gtk.Window):
         """Costruisce il pannello sezioni (colonna sinistra)."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 
-        section_header = Gtk.Label(label="SEZIONI", xalign=0)
+        section_header = Gtk.Label(label=t("sidebar.sections_header"), xalign=0)
         section_header.add_css_class("caption")
         section_header.set_margin_start(12)
         section_header.set_margin_top(8)
@@ -236,7 +243,7 @@ class SidebarPanel(Gtk.Window):
         box.append(scrolled)
 
         # Bottone nuova sezione
-        add_section_btn = Gtk.Button(label="+ Sezione")
+        add_section_btn = Gtk.Button(label=t("sidebar.new_section"))
         add_section_btn.add_css_class("flat")
         add_section_btn.set_margin_start(8)
         add_section_btn.set_margin_end(8)
@@ -262,7 +269,7 @@ class SidebarPanel(Gtk.Window):
 
         # Voce "Tutti"
         all_row = self._create_section_row(
-            label=f"Tutti ({total_count})",
+            label=t("sidebar.all_entries", count=total_count),
             section_id=None,
         )
         self._section_list.append(all_row)
@@ -270,7 +277,7 @@ class SidebarPanel(Gtk.Window):
         # Sezioni dal database
         for section in sections:
             row = self._create_section_row(
-                label=f"{section.name} ({section.entry_count})",
+                label=t("sidebar.section_row", name=section.name, count=section.entry_count),
                 section_id=section.id,
                 section=section,
             )
@@ -437,12 +444,12 @@ class SidebarPanel(Gtk.Window):
         popup_box.set_margin_start(4)
         popup_box.set_margin_end(4)
 
-        rename_btn = Gtk.Button(label="Rinomina")
+        rename_btn = Gtk.Button(label=t("sidebar.rename"))
         rename_btn.add_css_class("flat")
         rename_btn.connect("clicked", lambda _: self._do_rename_section(section, popup))
         popup_box.append(rename_btn)
 
-        delete_btn = Gtk.Button(label="Elimina")
+        delete_btn = Gtk.Button(label=t("sidebar.delete"))
         delete_btn.add_css_class("flat")
         delete_btn.connect("clicked", lambda _: self._do_delete_section(section, popup))
         popup_box.append(delete_btn)
