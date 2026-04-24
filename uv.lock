@@ -14,7 +14,7 @@ wheels = [
 [[package]]
 name = "command-quiver"
 version = "1.0.0"
-source = { virtual = "." }
+source = { editable = "." }
 
 [package.dev-dependencies]
 dev = [
