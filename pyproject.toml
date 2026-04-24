@@ -1,0 +1,29 @@
+[project]
+name = "command-quiver"
+version = "1.0.0"
+description = "Accesso rapido a prompt AI e comandi shell dalla system tray di GNOME"
+requires-python = ">=3.10"
+license = "MIT"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
+# RUF012: ClassVar su attributi di classe immutabili — falso positivo su dict costanti
+ignore = ["RUF012"]
+
+[tool.ruff.lint.per-file-ignores]
+# gi.require_version() DEVE precedere gli import da gi.repository — pattern obbligato da GObject
+"command_quiver/**/*.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "ruff>=0.15.11",
+]
