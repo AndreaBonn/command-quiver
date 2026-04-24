@@ -61,6 +61,25 @@ class TestTranslation:
         result = t("sidebar.all_entries")
         assert "{count}" in result
 
+    def test_wrong_interpolation_kwargs_returns_template(self) -> None:
+        """t() con kwargs errati (KeyError) restituisce il template non interpolato."""
+        init("it")
+        result = t("sidebar.all_entries", wrong_param=42)
+        assert "{count}" in result
+        assert "42" not in result
+
+    def test_fallback_to_default_language_for_missing_key(self) -> None:
+        """Se la chiave manca nella lingua corrente, usa il default."""
+        from unittest.mock import patch
+
+        init("en")
+        # Rimuovi temporaneamente una chiave dalla traduzione inglese
+        with patch.dict(_TRANSLATIONS["en"], clear=False) as patched:
+            del patched["sidebar.new_entry"]
+            result = t("sidebar.new_entry")
+            # Deve restituire la traduzione italiana (default)
+            assert result == "+ Nuova voce"
+
     def teardown_method(self) -> None:
         init(DEFAULT_LANGUAGE)
 

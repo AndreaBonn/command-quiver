@@ -39,6 +39,23 @@ class TestSettings:
         assert s.window_width == 520
         assert s.window_height == 600
 
+    def test_invalid_language_falls_back_to_italian(self) -> None:
+        s = Settings(language="fr")
+        assert s.language == "it"
+
+    def test_valid_languages_accepted(self) -> None:
+        for lang in ("it", "en"):
+            s = Settings(language=lang)
+            assert s.language == lang
+
+    def test_boundary_window_width_exactly_300(self) -> None:
+        s = Settings(window_width=300)
+        assert s.window_width == 300
+
+    def test_boundary_window_height_exactly_300(self) -> None:
+        s = Settings(window_height=300)
+        assert s.window_height == 300
+
 
 class TestLoadSettings:
     """Test caricamento impostazioni da file."""
