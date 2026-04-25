@@ -4,6 +4,7 @@
 
 Libreria personale di prompt AI e comandi shell, accessibile dalla system tray di GNOME. Cerca, organizza in sezioni, copia negli appunti o esegui nel terminale.
 
+[![CI](https://github.com/AndreaBonn/command-quiver/actions/workflows/ci.yml/badge.svg)](https://github.com/AndreaBonn/command-quiver/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## Panoramica
