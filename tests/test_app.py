@@ -83,6 +83,22 @@ class TestTrayHelperManagement:
             # Non deve sollevare eccezione
             app._stop_tray_helper()
 
+    def test_stop_tray_helper_closes_stderr_file(self) -> None:
+        with patch("command_quiver.app.Gtk"), patch("command_quiver.app.Gdk"):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            mock_process = MagicMock(spec=subprocess.Popen)
+            mock_process.poll.return_value = None
+            app._tray_process = mock_process
+            mock_stderr = MagicMock()
+            app._tray_stderr_file = mock_stderr
+
+            app._stop_tray_helper()
+
+            mock_stderr.close.assert_called_once()
+            assert app._tray_stderr_file is None
+
     def test_launch_tray_process_returns_true_on_success(self) -> None:
         with (
             patch("command_quiver.app.Gtk"),

@@ -22,8 +22,8 @@ class EntryRow(Gtk.Box):
     def __init__(
         self,
         entry: Entry,
-        on_click: Callable,
-        on_move: Callable | None = None,
+        on_click: Callable[[Entry], None],
+        on_move: Callable[[int, int], None] | None = None,
         show_move: bool = False,
         is_first: bool = False,
         is_last: bool = False,
@@ -124,8 +124,8 @@ class EntryListWidget(Gtk.Box):
 
     def __init__(
         self,
-        on_entry_click: Callable,
-        on_move: Callable | None = None,
+        on_entry_click: Callable[[Entry], None],
+        on_move: Callable[[int, int], None] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self._on_entry_click = on_entry_click
@@ -146,6 +146,11 @@ class EntryListWidget(Gtk.Box):
 
         # Placeholder per lista vuota
         self._list_box.set_placeholder(self._create_placeholder())
+
+    @property
+    def entries(self) -> list[Entry]:
+        """Restituisce le voci attualmente visualizzate (sola lettura)."""
+        return self._entries
 
     def _create_placeholder(self) -> Gtk.Box:
         """Crea il widget placeholder per la lista vuota."""

@@ -40,6 +40,8 @@ Command Quiver è un'applicazione desktop locale senza componenti esposti in ret
 - Il database SQLite (`vault.db`) è salvato senza cifratura in `~/.local/share/command-quiver/`. Se salvi informazioni sensibili nelle voci, proteggi questa directory con permessi file appropriati.
 - I comandi shell vengono eseguiti così come sono in gnome-terminal. Verifica i comandi prima dell'esecuzione, specialmente se importati da fonti esterne.
 - I file di log in `~/.local/share/command-quiver/logs/` possono contenere nomi delle voci. Limita l'accesso se i nomi sono sensibili.
+- L'interfaccia D-Bus (`com.github.commandquiver.App`) è registrata sul session bus senza verifica del mittente. Qualsiasi processo in esecuzione nella stessa sessione utente può invocare metodi come Toggle, NewEntry, ChangeLanguage e Quit. Questo è standard per applicazioni desktop, ma significa che un processo locale compromesso potrebbe controllare l'applicazione.
+- **Trust model import JSON**: la funzione di importazione (`db/queries.py:import_entries`) accetta voci di tipo `shell` il cui contenuto viene eseguito letteralmente quando l'utente clicca "Esegui". I file JSON importati sono trattati come input fidato — non c'è dialog di conferma né sandboxing prima dell'esecuzione. Importa solo file da fonti di cui ti fidi.
 
 ## Fuori ambito
 
