@@ -36,14 +36,14 @@ class TestEntryRow:
         from command_quiver.ui.entry_list import EntryRow
 
         entry = _make_entry(entry_type="shell")
-        row = EntryRow(entry=entry, on_click=MagicMock())
+        row = EntryRow(entry=entry, on_edit=MagicMock())
         assert row.entry == entry
 
     def test_creates_with_prompt_entry(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryRow
 
         entry = _make_entry(entry_type="prompt")
-        row = EntryRow(entry=entry, on_click=MagicMock())
+        row = EntryRow(entry=entry, on_edit=MagicMock())
         assert row.entry.type == "prompt"
 
     def test_truncates_long_names(self, gtk_init) -> None:
@@ -51,7 +51,7 @@ class TestEntryRow:
 
         long_name = "A" * 50
         entry = _make_entry(name=long_name)
-        row = EntryRow(entry=entry, on_click=MagicMock())
+        row = EntryRow(entry=entry, on_edit=MagicMock())
         # Il nome lungo deve essere troncato nell'UI ma l'entry resta intatta
         assert row.entry.name == long_name
 
@@ -59,7 +59,7 @@ class TestEntryRow:
         from command_quiver.ui.entry_list import EntryRow
 
         entry = _make_entry(content="docker ps -a")
-        row = EntryRow(entry=entry, on_click=MagicMock())
+        row = EntryRow(entry=entry, on_edit=MagicMock())
 
         with patch(
             "command_quiver.ui.entry_list.copy_to_clipboard",
@@ -72,7 +72,7 @@ class TestEntryRow:
         from command_quiver.ui.entry_list import EntryRow
 
         entry = _make_entry()
-        row = EntryRow(entry=entry, on_click=MagicMock())
+        row = EntryRow(entry=entry, on_edit=MagicMock())
 
         with patch(
             "command_quiver.ui.entry_list.copy_to_clipboard",
@@ -85,7 +85,7 @@ class TestEntryRow:
         from command_quiver.ui.entry_list import EntryRow
 
         entry = _make_entry()
-        row = EntryRow(entry=entry, on_click=MagicMock())
+        row = EntryRow(entry=entry, on_edit=MagicMock())
 
         with patch(
             "command_quiver.ui.entry_list.copy_to_clipboard",
@@ -99,7 +99,7 @@ class TestEntryRow:
         from command_quiver.ui.entry_list import EntryRow
 
         entry = _make_entry()
-        row = EntryRow(entry=entry, on_click=MagicMock())
+        row = EntryRow(entry=entry, on_edit=MagicMock())
         row._copy_btn.set_icon_name("object-select-symbolic")
 
         result = row._reset_copy_icon()
@@ -113,7 +113,7 @@ class TestEntryRow:
         from command_quiver.ui.entry_list import EntryRow
 
         entry = _make_entry(content="ls -la", entry_type="shell")
-        row = EntryRow(entry=entry, on_click=MagicMock())
+        row = EntryRow(entry=entry, on_edit=MagicMock())
 
         with patch(
             "command_quiver.ui.entry_list.execute_in_terminal",
@@ -127,7 +127,7 @@ class TestEntryRow:
         from command_quiver.ui.entry_list import EntryRow
 
         entry = _make_entry(entry_type="shell")
-        row = EntryRow(entry=entry, on_click=MagicMock())
+        row = EntryRow(entry=entry, on_edit=MagicMock())
 
         with patch(
             "command_quiver.ui.entry_list.execute_in_terminal",
@@ -144,13 +144,13 @@ class TestEntryListWidget:
     def test_creates_empty_list(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryListWidget
 
-        widget = EntryListWidget(on_entry_click=MagicMock())
+        widget = EntryListWidget(on_entry_edit=MagicMock())
         assert widget.entries == []
 
     def test_update_entries_populates_list(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryListWidget
 
-        widget = EntryListWidget(on_entry_click=MagicMock())
+        widget = EntryListWidget(on_entry_edit=MagicMock())
         entries = [_make_entry(entry_id=i, name=f"Entry {i}") for i in range(3)]
 
         widget.update_entries(entries)
@@ -159,7 +159,7 @@ class TestEntryListWidget:
     def test_update_entries_clears_previous(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryListWidget
 
-        widget = EntryListWidget(on_entry_click=MagicMock())
+        widget = EntryListWidget(on_entry_edit=MagicMock())
 
         # Prima popolazione
         widget.update_entries([_make_entry(entry_id=1)])
@@ -171,21 +171,23 @@ class TestEntryListWidget:
     def test_update_with_empty_list(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryListWidget
 
-        widget = EntryListWidget(on_entry_click=MagicMock())
+        widget = EntryListWidget(on_entry_edit=MagicMock())
         widget.update_entries([_make_entry()])
         widget.update_entries([])
         assert widget.entries == []
 
-    def test_row_activated_calls_on_click(self, gtk_init) -> None:
+    def test_row_activated_copies_content(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryListWidget
 
-        mock_click = MagicMock()
-        widget = EntryListWidget(on_entry_click=mock_click)
+        widget = EntryListWidget(on_entry_edit=MagicMock())
         entry = _make_entry()
         widget.update_entries([entry])
 
-        # Simula attivazione della prima riga
+        # Simula attivazione della prima riga -> deve copiare, non aprire editor
         row = widget._list_box.get_row_at_index(0)
         if row:
-            widget._on_row_activated(widget._list_box, row)
-            mock_click.assert_called_once_with(entry)
+            with patch(
+                "command_quiver.ui.entry_list.copy_to_clipboard", return_value=True
+            ) as mock_copy:
+                widget._on_row_activated(widget._list_box, row)
+                mock_copy.assert_called_once_with(entry.content)

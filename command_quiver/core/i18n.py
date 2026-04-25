@@ -46,6 +46,7 @@ _TRANSLATIONS: dict[Language, dict[str, str]] = {
         "sidebar.delete": "Elimina",
         # --- Entry list ---
         "entry_list.copy_tooltip": "Copia",
+        "entry_list.edit_tooltip": "Modifica",
         "entry_list.execute_tooltip": "Esegui in terminale",
         "entry_list.terminal_not_found": "Terminale non trovato",
         "entry_list.empty_title": "Nessuna voce trovata",
@@ -116,6 +117,7 @@ _TRANSLATIONS: dict[Language, dict[str, str]] = {
         "sidebar.delete": "Delete",
         # --- Entry list ---
         "entry_list.copy_tooltip": "Copy",
+        "entry_list.edit_tooltip": "Edit",
         "entry_list.execute_tooltip": "Run in terminal",
         "entry_list.terminal_not_found": "Terminal not found",
         "entry_list.empty_title": "No entries found",

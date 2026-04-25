@@ -105,7 +105,7 @@ class SidebarPanel(Gtk.Window):
         right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 
         self._entry_list = EntryListWidget(
-            on_entry_click=self._on_entry_click,
+            on_entry_edit=self._on_entry_click,
             on_move=self._on_entry_move,
         )
         right_box.append(self._entry_list)

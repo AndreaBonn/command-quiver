@@ -22,7 +22,7 @@ class EntryRow(Gtk.Box):
     def __init__(
         self,
         entry: Entry,
-        on_click: Callable[[Entry], None],
+        on_edit: Callable[[Entry], None],
         on_move: Callable[[int, int], None] | None = None,
         show_move: bool = False,
         is_first: bool = False,
@@ -30,7 +30,7 @@ class EntryRow(Gtk.Box):
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.entry = entry
-        self._on_click = on_click
+        self._on_edit = on_edit
 
         self.set_margin_start(8)
         self.set_margin_end(8)
@@ -66,6 +66,15 @@ class EntryRow(Gtk.Box):
         badge.add_css_class(f"badge-{entry.type}")
         self.append(badge)
 
+        # Bottone modifica
+        edit_btn = Gtk.Button(
+            icon_name="document-edit-symbolic",
+            tooltip_text=t("entry_list.edit_tooltip"),
+        )
+        edit_btn.add_css_class("flat")
+        edit_btn.connect("clicked", self._on_edit_clicked)
+        self.append(edit_btn)
+
         # Bottone copia
         self._copy_btn = Gtk.Button(
             icon_name="edit-copy-symbolic",
@@ -84,6 +93,10 @@ class EntryRow(Gtk.Box):
             exec_btn.add_css_class("flat")
             exec_btn.connect("clicked", self._on_execute)
             self.append(exec_btn)
+
+    def _on_edit_clicked(self, _button: Gtk.Button) -> None:
+        """Apre l'editor per questa voce."""
+        self._on_edit(self.entry)
 
     def _on_copy(self, _button: Gtk.Button) -> None:
         """Copia il contenuto negli appunti con feedback visivo."""
@@ -124,11 +137,11 @@ class EntryListWidget(Gtk.Box):
 
     def __init__(
         self,
-        on_entry_click: Callable[[Entry], None],
+        on_entry_edit: Callable[[Entry], None],
         on_move: Callable[[int, int], None] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        self._on_entry_click = on_entry_click
+        self._on_entry_edit = on_entry_edit
         self._on_move = on_move
         self._entries: list[Entry] = []
         self._show_move = False
@@ -194,7 +207,7 @@ class EntryListWidget(Gtk.Box):
         for i, entry in enumerate(entries):
             row_widget = EntryRow(
                 entry=entry,
-                on_click=self._on_entry_click,
+                on_edit=self._on_entry_edit,
                 on_move=self._on_move if show_move else None,
                 show_move=show_move,
                 is_first=(i == 0),
@@ -203,7 +216,7 @@ class EntryListWidget(Gtk.Box):
             self._list_box.append(row_widget)
 
     def _on_row_activated(self, _list_box: Gtk.ListBox, row: Gtk.ListBoxRow) -> None:
-        """Gestisce il click su una riga -> apre l'editor."""
+        """Gestisce il click su una riga -> copia il contenuto."""
         child = row.get_child()
         if isinstance(child, EntryRow):
-            self._on_entry_click(child.entry)
+            child._on_copy(None)
