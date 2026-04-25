@@ -60,6 +60,7 @@ class CommandQuiverApp(Gtk.Application):
         self._tray_process: subprocess.Popen | None = None
         self._tray_helper_path: Path | None = None
         self._tray_health_source: int = 0
+        self._tray_stderr_file = None
         self._dbus_reg_id = 0
 
     def do_startup(self) -> None:
@@ -176,10 +177,14 @@ class CommandQuiverApp(Gtk.Application):
     def _launch_tray_process(self) -> bool:
         """Lancia il processo tray helper. Restituisce True se avviato."""
         try:
+            log_dir = Path.home() / ".local" / "share" / "command-quiver" / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            self._tray_stderr_file = (log_dir / "tray_stderr.log").open("a", encoding="utf-8")
+
             self._tray_process = subprocess.Popen(
                 [sys.executable, str(self._tray_helper_path)],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=self._tray_stderr_file,
             )
             logger.info("Tray helper avviato (PID: %d)", self._tray_process.pid)
             return True
@@ -206,6 +211,9 @@ class CommandQuiverApp(Gtk.Application):
             except subprocess.TimeoutExpired:
                 self._tray_process.kill()
             logger.info("Tray helper terminato")
+        if self._tray_stderr_file is not None:
+            self._tray_stderr_file.close()
+            self._tray_stderr_file = None
 
     # --- Azioni sidebar ---
 
