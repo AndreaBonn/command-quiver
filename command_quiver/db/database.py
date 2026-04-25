@@ -144,6 +144,7 @@ class Database:
                         logger.info("Migrazione v%d già applicata (colonna esistente)", version)
                     else:
                         raise
+                # PRAGMA non supporta parametri bindati — version è sempre int da _MIGRATIONS
                 self.connection.execute(f"PRAGMA user_version = {version}")
                 self.connection.commit()
 
