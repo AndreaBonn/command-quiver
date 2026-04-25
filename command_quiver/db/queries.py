@@ -375,6 +375,9 @@ class EntryRepository:
         """Importa voci da una lista di dizionari. Restituisce il numero importato.
 
         Crea sezioni mancanti automaticamente. Salta voci con dati invalidi.
+
+        SECURITY: le voci importate con type='shell' verranno eseguite letteralmente
+        dall'utente. Il file JSON è trattato come input fidato — vedi SECURITY.md.
         """
         imported = 0
         # Cache sezioni per nome
