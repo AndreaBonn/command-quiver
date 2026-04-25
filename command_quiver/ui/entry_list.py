@@ -147,6 +147,11 @@ class EntryListWidget(Gtk.Box):
         # Placeholder per lista vuota
         self._list_box.set_placeholder(self._create_placeholder())
 
+    @property
+    def entries(self) -> list[Entry]:
+        """Restituisce le voci attualmente visualizzate (sola lettura)."""
+        return self._entries
+
     def _create_placeholder(self) -> Gtk.Box:
         """Crea il widget placeholder per la lista vuota."""
         box = Gtk.Box(

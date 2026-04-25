@@ -145,7 +145,7 @@ class TestEntryListWidget:
         from command_quiver.ui.entry_list import EntryListWidget
 
         widget = EntryListWidget(on_entry_click=MagicMock())
-        assert widget._entries == []
+        assert widget.entries == []
 
     def test_update_entries_populates_list(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryListWidget
@@ -154,7 +154,7 @@ class TestEntryListWidget:
         entries = [_make_entry(entry_id=i, name=f"Entry {i}") for i in range(3)]
 
         widget.update_entries(entries)
-        assert len(widget._entries) == 3
+        assert len(widget.entries) == 3
 
     def test_update_entries_clears_previous(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryListWidget
@@ -166,7 +166,7 @@ class TestEntryListWidget:
         # Seconda popolazione
         entries = [_make_entry(entry_id=i) for i in range(5)]
         widget.update_entries(entries)
-        assert len(widget._entries) == 5
+        assert len(widget.entries) == 5
 
     def test_update_with_empty_list(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryListWidget
@@ -174,7 +174,7 @@ class TestEntryListWidget:
         widget = EntryListWidget(on_entry_click=MagicMock())
         widget.update_entries([_make_entry()])
         widget.update_entries([])
-        assert widget._entries == []
+        assert widget.entries == []
 
     def test_row_activated_calls_on_click(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryListWidget

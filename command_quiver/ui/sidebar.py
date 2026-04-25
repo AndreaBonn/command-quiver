@@ -245,7 +245,7 @@ class SidebarPanel(Gtk.Window):
 
     def _on_entry_move(self, entry_id: int, direction: int) -> None:
         """Sposta una voce su (-1) o giù (+1) nell'ordinamento personale."""
-        entries = self._entry_list._entries
+        entries = self._entry_list.entries
         idx = next((i for i, e in enumerate(entries) if e.id == entry_id), None)
         if idx is None:
             return

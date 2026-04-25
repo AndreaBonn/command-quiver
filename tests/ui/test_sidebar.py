@@ -63,8 +63,8 @@ class TestSidebarPanel:
         sidebar._search_text = "docker"
         sidebar._refresh_entries()
 
-        assert len(sidebar._entry_list._entries) == 1
-        assert sidebar._entry_list._entries[0].name == "Docker Build"
+        assert len(sidebar._entry_list.entries) == 1
+        assert sidebar._entry_list.entries[0].name == "Docker Build"
 
     def test_section_selection_filters_entries(
         self,
@@ -94,13 +94,13 @@ class TestSidebarPanel:
         # Seleziona sezione Shell Commands (id=1)
         sidebar._section_panel.current_section_id = 1
         sidebar._refresh_entries()
-        assert len(sidebar._entry_list._entries) == 1
-        assert sidebar._entry_list._entries[0].name == "Shell Cmd"
+        assert len(sidebar._entry_list.entries) == 1
+        assert sidebar._entry_list.entries[0].name == "Shell Cmd"
 
         # Seleziona "Tutti" (None)
         sidebar._section_panel.current_section_id = None
         sidebar._refresh_entries()
-        assert len(sidebar._entry_list._entries) == 2
+        assert len(sidebar._entry_list.entries) == 2
 
     def test_on_entry_saved_creates_new(
         self,
