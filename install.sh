@@ -125,11 +125,11 @@ info "Icone installate in ~/.local/share/icons/hicolor/"
 DESKTOP_CONTENT="[Desktop Entry]
 Type=Application
 Name=Command Quiver
-Exec=bash -c 'PYTHONPATH=$INSTALL_DIR python3 -m command_quiver.main'
+Exec=env PYTHONPATH=$INSTALL_DIR python3 -m command_quiver.main
 Icon=$APP_ID
 Comment=Accesso rapido a prompt e comandi shell
 StartupNotify=true
-Categories=Utility;"
+Categories=Utility;GTK;"
 
 # .desktop in applications (dock, alt-tab, GNOME search)
 APPS_DESKTOP="$HOME/.local/share/applications/$APP_ID.desktop"

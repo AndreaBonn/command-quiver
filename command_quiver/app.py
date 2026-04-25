@@ -17,7 +17,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Gio, GLib, Gtk
+from gi.repository import Gdk, Gio, GLib, Gtk
 
 from command_quiver import APP_ID
 from command_quiver.core.settings import load_settings, save_settings
@@ -62,6 +62,12 @@ class CommandQuiverApp(Gtk.Application):
     def do_startup(self) -> None:
         """Inizializzazione al primo avvio (database, impostazioni, tray)."""
         Gtk.Application.do_startup(self)
+
+        # Icona finestra per taskbar Ubuntu (GTK4 usa icon-name a livello app)
+        icon_theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+        assets_dir = str(Path(__file__).resolve().parent / "assets")
+        icon_theme.add_search_path(assets_dir)
+        Gtk.Window.set_default_icon_name("icon")
 
         # Mantiene l'app in vita anche senza finestre visibili (tray app)
         self.hold()

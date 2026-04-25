@@ -1,7 +1,6 @@
 """Pannello laterale principale con ricerca, sezioni e lista voci."""
 
 import logging
-from pathlib import Path
 
 import gi
 
@@ -53,11 +52,6 @@ class SidebarPanel(Gtk.Window):
             decorated=True,
         )
 
-        # Icona finestra per taskbar Ubuntu
-        icon_path = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
-        if icon_path.exists():
-            texture = Gdk.Texture.new_from_filename(str(icon_path))
-            self.set_icon(texture)
         self._db = db
         self._settings = settings
         self._section_repo = SectionRepository(db.connection)
