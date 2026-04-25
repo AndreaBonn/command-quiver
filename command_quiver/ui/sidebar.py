@@ -46,7 +46,7 @@ class SidebarPanel(Gtk.Window):
         settings: Settings,
     ) -> None:
         super().__init__(
-            title="Command Quiver",
+            title="Command Quiver by Bonn",
             default_width=settings.window_width,
             default_height=settings.window_height,
             decorated=True,
