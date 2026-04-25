@@ -42,8 +42,8 @@ def execute_in_terminal(command: str) -> bool:
 
     # Il comando viene wrappato in bash -c con prompt finale
     # per mantenere il terminale aperto dopo l'esecuzione
-    press_enter_msg = t("executor.press_enter")
-    wrapped = f'{command}; echo "{press_enter_msg}"; read'
+    press_enter_msg = t("executor.press_enter").replace("'", "'\\''")
+    wrapped = f"{command}; echo $'{press_enter_msg}'; read"
 
     try:
         subprocess.Popen(
