@@ -79,7 +79,7 @@ class TestSectionRepository:
     ) -> None:
         all_sections = sections.get_all()
         shell_id = all_sections[0].id  # Shell Commands
-        generale_id = sections.get_generale_id()
+        generale_id = sections.get_default_section_id()
 
         # Crea voce nella sezione Shell
         entries.create(EntryCreate(name="ls", content="ls -la", section_id=shell_id, type="shell"))
@@ -92,7 +92,7 @@ class TestSectionRepository:
         assert any(e.name == "ls" for e in all_entries)
 
     def test_cannot_delete_generale(self, sections: SectionRepository) -> None:
-        generale_id = sections.get_generale_id()
+        generale_id = sections.get_default_section_id()
         result = sections.delete(generale_id)
         assert result is False
 
@@ -208,6 +208,24 @@ class TestEntryFiltering:
         result = entries.get_all(search="DOCKER")
         assert len(result) == 1
 
+    def test_search_case_insensitive_unicode(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        """Ricerca case-insensitive per caratteri accentati/unicode."""
+        shell_id = sections.get_all()[0].id
+        entries.create(
+            EntryCreate(
+                name="Résumé Generator",
+                content="generate résumé",
+                section_id=shell_id,
+            )
+        )
+        # Cerca con case diverso
+        result = entries.get_all(search="résumé")
+        assert len(result) == 1
+        result = entries.get_all(search="RÉSUMÉ")
+        assert len(result) == 1
+
     def test_sort_alpha_asc(self, entries: EntryRepository) -> None:
         result = entries.get_all(sort_order="alpha_asc")
         names = [e.name for e in result]
@@ -247,19 +265,32 @@ class TestEntryPosition:
 class TestSectionEdgeCases:
     """Test edge case sezioni."""
 
-    def test_get_generale_id_creates_if_missing(self, db: Database) -> None:
-        """Se 'Generale' non esiste, get_generale_id la crea."""
-        # Elimina la sezione Generale
+    def test_get_default_section_id_creates_if_missing(self, db: Database) -> None:
+        """Se nessuna sezione default esiste, get_default_section_id la crea."""
+        # Elimina tutte le sezioni default
+        db.connection.execute("DELETE FROM sections WHERE is_default = 1")
         db.connection.execute("DELETE FROM sections WHERE name = 'Generale'")
         db.connection.commit()
 
         sections = SectionRepository(db.connection)
-        generale_id = sections.get_generale_id()
-        assert generale_id is not None
+        default_id = sections.get_default_section_id()
+        assert default_id is not None
 
-        # Verifica che esista nel database
-        section = sections.get_by_id(generale_id)
+        # Verifica che esista nel database con flag is_default
+        section = sections.get_by_id(default_id)
         assert section.name == "Generale"
+        assert section.is_default == 1
+
+    def test_get_default_section_id_finds_renamed_default(self, db: Database) -> None:
+        """Se la sezione default viene rinominata, il flag is_default la identifica."""
+        # Rinomina "Generale" ma mantieni is_default=1
+        db.connection.execute("UPDATE sections SET name = 'Archivio' WHERE is_default = 1")
+        db.connection.commit()
+
+        sections = SectionRepository(db.connection)
+        default_id = sections.get_default_section_id()
+        section = sections.get_by_id(default_id)
+        assert section.name == "Archivio"
 
 
 class TestEntryEdgeCases:

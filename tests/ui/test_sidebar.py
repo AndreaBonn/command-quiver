@@ -29,7 +29,7 @@ class TestSidebarPanel:
         sidebar = self._create_sidebar(db_for_ui)
         # Lista sezioni: "Tutti" + 4 default
         row_count = 0
-        while sidebar._section_list.get_row_at_index(row_count):
+        while sidebar._section_panel._section_list.get_row_at_index(row_count):
             row_count += 1
         assert row_count == 5  # Tutti + 4 sezioni
 
@@ -92,13 +92,13 @@ class TestSidebarPanel:
         sidebar = self._create_sidebar(db_for_ui)
 
         # Seleziona sezione Shell Commands (id=1)
-        sidebar._current_section_id = 1
+        sidebar._section_panel.current_section_id = 1
         sidebar._refresh_entries()
         assert len(sidebar._entry_list._entries) == 1
         assert sidebar._entry_list._entries[0].name == "Shell Cmd"
 
         # Seleziona "Tutti" (None)
-        sidebar._current_section_id = None
+        sidebar._section_panel.current_section_id = None
         sidebar._refresh_entries()
         assert len(sidebar._entry_list._entries) == 2
 
@@ -179,7 +179,7 @@ class TestSidebarPanel:
         from command_quiver.db.queries import SectionRepository
 
         sidebar = self._create_sidebar(db_for_ui)
-        sidebar._on_section_created("Docker")
+        sidebar._section_panel._on_section_created("Docker")
 
         sections = SectionRepository(db_for_ui.connection).get_all()
         names = [s.name for s in sections]
@@ -191,10 +191,10 @@ class TestSidebarPanel:
         db_for_ui: Database,
     ) -> None:
         sidebar = self._create_sidebar(db_for_ui)
-        sidebar._current_section_id = 1
+        sidebar._section_panel.current_section_id = 1
 
-        sidebar._on_section_deleted(1)
-        assert sidebar._current_section_id is None
+        sidebar._section_panel._on_section_deleted(1)
+        assert sidebar._section_panel.current_section_id is None
 
     def test_on_section_renamed(
         self,
@@ -204,7 +204,7 @@ class TestSidebarPanel:
         from command_quiver.db.queries import SectionRepository
 
         sidebar = self._create_sidebar(db_for_ui)
-        sidebar._on_section_renamed(section_id=1, new_name="Comandi")
+        sidebar._section_panel._on_section_renamed(section_id=1, new_name="Comandi")
 
         section = SectionRepository(db_for_ui.connection).get_by_id(1)
         assert section.name == "Comandi"
@@ -231,7 +231,7 @@ class TestSidebarPanel:
     ) -> None:
         settings = Settings()
         sidebar = self._create_sidebar(db_for_ui, settings=settings)
-        sidebar._current_section_id = 3
+        sidebar._section_panel.current_section_id = 3
 
         with patch("command_quiver.ui.sidebar.save_settings") as mock_save:
             result = sidebar._on_close_request(sidebar)

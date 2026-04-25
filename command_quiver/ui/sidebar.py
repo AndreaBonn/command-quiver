@@ -37,7 +37,6 @@ class SidebarPanel(Gtk.Window):
         "chronological_asc",
         "alpha_asc",
         "alpha_desc",
-        "personal",
     ]
 
     def __init__(
@@ -121,7 +120,6 @@ class SidebarPanel(Gtk.Window):
             t("sidebar.sort_oldest_asc"),
             t("sidebar.sort_alpha_asc"),
             t("sidebar.sort_alpha_desc"),
-            t("sidebar.sort_personal"),
         ]
         self._sort_dropdown = Gtk.DropDown()
         self._sort_dropdown.set_model(Gtk.StringList.new(sort_options))
@@ -133,7 +131,6 @@ class SidebarPanel(Gtk.Window):
             "chronological_asc": 1,
             "alpha_asc": 2,
             "alpha_desc": 3,
-            "personal": 4,
         }
         self._sort_dropdown.set_selected(sort_map.get(self._settings.sort_order, 0))
         self._sort_dropdown.connect("notify::selected", self._on_sort_changed)

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS sections (
     name        TEXT NOT NULL UNIQUE,
     icon        TEXT DEFAULT 'folder',
     position    INTEGER NOT NULL DEFAULT 0,
+    is_default  INTEGER NOT NULL DEFAULT 0,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -38,11 +39,11 @@ CREATE INDEX IF NOT EXISTS idx_sections_position ON sections(position);
 
 # Sezioni di default inserite al primo avvio
 _SEED_SQL = """
-INSERT OR IGNORE INTO sections (name, icon, position) VALUES
-    ('Shell Commands', 'utilities-terminal', 0),
-    ('AI Prompts',     'format-text-bold',   1),
-    ('Git',            'vcs-commit',          2),
-    ('Generale',       'folder',              3);
+INSERT OR IGNORE INTO sections (name, icon, position, is_default) VALUES
+    ('Shell Commands', 'utilities-terminal', 0, 0),
+    ('AI Prompts',     'format-text-bold',   1, 0),
+    ('Git',            'vcs-commit',          2, 0),
+    ('Generale',       'folder',              3, 1);
 """
 
 # Percorso predefinito del database
@@ -81,6 +82,8 @@ class Database:
             self._connection.execute("PRAGMA foreign_keys = ON")
             self._connection.execute("PRAGMA journal_mode = WAL")
             self._connection.execute("PRAGMA busy_timeout = 5000")
+            # Funzione per ricerca case-insensitive unicode (LIKE gestisce solo ASCII)
+            self._connection.create_function("UNICODE_LOWER", 1, str.casefold)
             logger.info("Connessione database aperta: %s", self._db_path)
         except sqlite3.Error:
             if not _allow_recreate:
@@ -92,12 +95,26 @@ class Database:
         """Crea le tabelle e inserisce i dati di default se necessario."""
         try:
             self.connection.executescript(_SCHEMA_SQL)
+            self._migrate()
             self.connection.executescript(_SEED_SQL)
             self.connection.commit()
             logger.info("Schema database inizializzato")
         except sqlite3.Error:
             logger.exception("Errore inizializzazione schema, tentativo di ricreare")
             self._recreate()
+
+    def _migrate(self) -> None:
+        """Applica migrazioni incrementali per DB pre-esistenti."""
+        # Migrazione: aggiunge is_default se mancante
+        columns = [
+            row[1] for row in self.connection.execute("PRAGMA table_info(sections)").fetchall()
+        ]
+        if "is_default" not in columns:
+            self.connection.execute(
+                "ALTER TABLE sections ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0"
+            )
+            self.connection.execute("UPDATE sections SET is_default = 1 WHERE name = 'Generale'")
+            logger.info("Migrazione: aggiunta colonna is_default a sections")
 
     def _recreate(self) -> None:
         """Ricrea il database da zero in caso di corruzione."""

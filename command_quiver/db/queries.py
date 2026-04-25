@@ -19,6 +19,7 @@ class Section:
     name: str
     icon: str = "folder"
     position: int = 0
+    is_default: int = 0
     created_at: str = ""
     entry_count: int = 0  # Calcolato via query, non persistito
 
@@ -74,7 +75,7 @@ class SectionRepository:
     def get_all(self) -> list[Section]:
         """Restituisce tutte le sezioni ordinate per posizione, con conteggio voci."""
         cursor = self._conn.execute("""
-            SELECT s.id, s.name, s.icon, s.position, s.created_at,
+            SELECT s.id, s.name, s.icon, s.position, s.is_default, s.created_at,
                    COUNT(e.id) AS entry_count
             FROM sections s
             LEFT JOIN entries e ON e.section_id = s.id
@@ -86,21 +87,28 @@ class SectionRepository:
     def get_by_id(self, section_id: int) -> Section | None:
         """Restituisce una sezione per ID."""
         cursor = self._conn.execute(
-            "SELECT id, name, icon, position, created_at FROM sections WHERE id = ?",
+            "SELECT id, name, icon, position, is_default, created_at FROM sections WHERE id = ?",
             (section_id,),
         )
         row = cursor.fetchone()
         return Section(**dict(row)) if row else None
 
-    def get_generale_id(self) -> int:
-        """Restituisce l'ID della sezione 'Generale' (fallback per voci orfane)."""
-        cursor = self._conn.execute("SELECT id FROM sections WHERE name = 'Generale'")
+    def get_default_section_id(self) -> int:
+        """Restituisce l'ID della sezione di default (fallback per voci orfane)."""
+        cursor = self._conn.execute("SELECT id FROM sections WHERE is_default = 1")
         row = cursor.fetchone()
         if row:
             return row["id"]
-        # Se non esiste, la crea
+        # Fallback: cerca per nome legacy, poi crea se non esiste
+        cursor = self._conn.execute("SELECT id FROM sections WHERE name = 'Generale'")
+        row = cursor.fetchone()
+        if row:
+            self._conn.execute("UPDATE sections SET is_default = 1 WHERE id = ?", (row["id"],))
+            self._conn.commit()
+            return row["id"]
         cursor = self._conn.execute(
-            "INSERT INTO sections (name, icon, position) VALUES ('Generale', 'folder', 999)"
+            "INSERT INTO sections (name, icon, position, is_default) "
+            "VALUES ('Generale', 'folder', 999, 1)"
         )
         self._conn.commit()
         return cursor.lastrowid
@@ -130,9 +138,9 @@ class SectionRepository:
 
     def delete(self, section_id: int) -> bool:
         """Elimina una sezione. Le voci vengono spostate in 'Generale'."""
-        generale_id = self.get_generale_id()
+        generale_id = self.get_default_section_id()
         if section_id == generale_id:
-            logger.warning("Tentativo di eliminare la sezione 'Generale' — operazione ignorata")
+            logger.warning("Tentativo di eliminare la sezione di default — operazione ignorata")
             return False
 
         # Sposta le voci nella sezione Generale
@@ -183,8 +191,12 @@ class EntryRepository:
             params.append(section_id)
 
         if search:
-            conditions.append("e.name LIKE ?")
-            params.append(f"%{search}%")
+            conditions.append(
+                "(UNICODE_LOWER(e.name) LIKE '%' || UNICODE_LOWER(?) || '%'"
+                " OR UNICODE_LOWER(e.content) LIKE '%' || UNICODE_LOWER(?) || '%'"
+                " OR UNICODE_LOWER(e.tags) LIKE '%' || UNICODE_LOWER(?) || '%')"
+            )
+            params.extend([search, search, search])
 
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
@@ -220,8 +232,11 @@ class EntryRepository:
 
     def create(self, data: EntryCreate) -> Entry:
         """Crea una nuova voce."""
-        # Prossima posizione personale disponibile
-        cursor = self._conn.execute("SELECT COALESCE(MAX(personal_pos), -1) + 1 FROM entries")
+        # Prossima posizione personale disponibile (per sezione)
+        cursor = self._conn.execute(
+            "SELECT COALESCE(MAX(personal_pos), -1) + 1 FROM entries WHERE section_id = ?",
+            (data.section_id,),
+        )
         next_pos = cursor.fetchone()[0]
 
         cursor = self._conn.execute(

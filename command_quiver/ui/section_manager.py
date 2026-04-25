@@ -119,6 +119,10 @@ class SectionRenameDialog(Gtk.Window):
         self._name_entry.connect("activate", lambda _: self._do_rename())
         box.append(self._name_entry)
 
+        self._error_label = Gtk.Label(label="", xalign=0, visible=False)
+        self._error_label.add_css_class("error-label")
+        box.append(self._error_label)
+
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         btn_box.set_halign(Gtk.Align.END)
 
@@ -137,6 +141,8 @@ class SectionRenameDialog(Gtk.Window):
         """Valida e rinomina la sezione."""
         new_name = self._name_entry.get_text().strip()
         if not new_name:
+            self._error_label.set_label(t("section.error_name_required"))
+            self._error_label.set_visible(True)
             return
         if new_name != self._section.name:
             self._on_rename(self._section.id, new_name)

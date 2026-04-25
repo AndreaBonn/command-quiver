@@ -15,6 +15,7 @@ from pathlib import Path
 
 import gi
 
+gi.require_version("Gdk", "4.0")
 gi.require_version("Gtk", "4.0")
 
 from gi.repository import Gdk, Gio, GLib, Gtk
@@ -72,25 +73,39 @@ class CommandQuiverApp(Gtk.Application):
         # Mantiene l'app in vita anche senza finestre visibili (tray app)
         self.hold()
 
-        # Database
+        try:
+            self._init_services()
+        except Exception:
+            logger.critical("Errore fatale durante l'avvio", exc_info=True)
+            self._show_error_dialog(
+                "Impossibile avviare Command Quiver.\n"
+                "Controlla i log in ~/.local/share/command-quiver/logs/"
+            )
+            self.release()
+            return
+
+        logger.info("Command Quiver avviato")
+
+    def _init_services(self) -> None:
+        """Inizializza database, impostazioni, i18n, D-Bus e tray."""
         self._db = Database()
         self._db.initialize()
 
-        # Impostazioni
         self._settings = load_settings()
 
-        # Inizializza il sistema di traduzione
         from command_quiver.core.i18n import init as i18n_init
 
         i18n_init(self._settings.language)
 
-        # Registra interfaccia D-Bus per ricevere comandi dal tray helper
         self._register_dbus_interface()
-
-        # Avvia il tray helper (processo separato GTK3)
         self._start_tray_helper()
 
-        logger.info("Command Quiver avviato")
+    def _show_error_dialog(self, message: str) -> None:
+        """Mostra un dialog di errore fatale all'utente."""
+        dialog = Gtk.AlertDialog(message="Errore avvio", detail=message)
+        dialog.set_buttons(["OK"])
+        window = Gtk.Window(application=self)
+        dialog.show(window)
 
     def do_activate(self) -> None:
         """Attivazione: mostra/crea la sidebar."""
@@ -232,55 +247,3 @@ class CommandQuiverApp(Gtk.Application):
 
         self.release()
         self.quit()
-
-    # --- Icona ---
-
-    @staticmethod
-    def _generate_icon(path: Path, size: int = 32) -> None:
-        """Genera programmaticamente l'icona dell'app (lettera Q stilizzata).
-
-        Tutte le coordinate sono proporzionali a `size` per supportare
-        risoluzioni multiple (32, 48, 64, 128).
-        """
-        import cairo
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        s = size / 32.0  # fattore di scala rispetto al design base 32px
-        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, size, size)
-        ctx = cairo.Context(surface)
-
-        # Sfondo arrotondato scuro
-        radius = 6 * s
-        ctx.new_sub_path()
-        ctx.arc(size - radius, radius, radius, -0.5 * 3.14159, 0)
-        ctx.arc(size - radius, size - radius, radius, 0, 0.5 * 3.14159)
-        ctx.arc(radius, size - radius, radius, 0.5 * 3.14159, 3.14159)
-        ctx.arc(radius, radius, radius, 3.14159, 1.5 * 3.14159)
-        ctx.close_path()
-        ctx.set_source_rgb(0.18, 0.20, 0.25)
-        ctx.fill()
-
-        # Lettera "Q" stilizzata in bianco
-        ctx.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
-        ctx.set_font_size(20 * s)
-        ctx.set_source_rgb(0.95, 0.95, 0.95)
-        extents = ctx.text_extents("Q")
-        x = (size - extents.width) / 2 - extents.x_bearing
-        y = (size - extents.height) / 2 - extents.y_bearing
-        ctx.move_to(x, y)
-        ctx.show_text("Q")
-
-        # Freccia piccola (quiver = faretra) in colore accento
-        ctx.set_source_rgb(0.35, 0.65, 0.95)
-        ctx.set_line_width(1.5 * s)
-        ctx.move_to(20 * s, 22 * s)
-        ctx.line_to(27 * s, 22 * s)
-        ctx.stroke()
-        ctx.move_to(24 * s, 19 * s)
-        ctx.line_to(27 * s, 22 * s)
-        ctx.line_to(24 * s, 25 * s)
-        ctx.stroke()
-
-        surface.write_to_png(str(path))
-        logger.info("Icona generata: %s (%dx%d)", path, size, size)

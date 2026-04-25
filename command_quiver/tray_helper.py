@@ -156,5 +156,31 @@ def main() -> None:
     Gtk.main()
 
 
+def _setup_logging() -> None:
+    """Configura logging per il tray helper (processo separato)."""
+    from logging.handlers import RotatingFileHandler
+
+    log_dir = Path.home() / ".local" / "share" / "command-quiver" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    formatter = logging.Formatter(
+        fmt="%(asctime)s [%(levelname)-7s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    handler = RotatingFileHandler(
+        log_dir / "tray.log",
+        maxBytes=524_288,
+        backupCount=2,
+        encoding="utf-8",
+    )
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(formatter)
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    root.addHandler(handler)
+
+
 if __name__ == "__main__":
+    _setup_logging()
     main()
