@@ -3,13 +3,13 @@ name = "command-quiver"
 version = "1.0.0"
 description = "Accesso rapido a prompt AI e comandi shell dalla system tray di GNOME"
 requires-python = ">=3.10"
-license = "MIT"
+license = "Apache-2.0"
 readme = "README.md"
 keywords = ["gnome", "tray", "prompt", "shell", "gtk4"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: X11 Applications :: GTK",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

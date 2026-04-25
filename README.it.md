@@ -10,7 +10,7 @@ Libreria personale di prompt AI e comandi shell, accessibile dalla system tray d
 [![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/AndreaBonn/command-quiver/main/badges/test-badge.json)](https://github.com/AndreaBonn/command-quiver/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/AndreaBonn/command-quiver/main/badges/coverage-badge.json)](https://github.com/AndreaBonn/command-quiver/actions/workflows/ci.yml)
 [![Ruff](https://img.shields.io/badge/linter-ruff-261230.svg)](https://docs.astral.sh/ruff/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Security Policy](https://img.shields.io/badge/security-policy-blueviolet.svg)](SECURITY.md)
 
 </div>
@@ -107,7 +107,7 @@ Per segnalare vulnerabilità, consulta la [policy di sicurezza](SECURITY.it.md).
 
 ## Licenza
 
-Rilasciato sotto licenza MIT -- vedi [LICENSE](LICENSE).
+Rilasciato sotto licenza Apache 2.0 -- vedi [LICENSE](LICENSE).
 
 ## Autore
 

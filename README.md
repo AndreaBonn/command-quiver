@@ -10,7 +10,7 @@ A personal library of AI prompts and shell commands, accessible from the GNOME s
 [![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/AndreaBonn/command-quiver/main/badges/test-badge.json)](https://github.com/AndreaBonn/command-quiver/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/AndreaBonn/command-quiver/main/badges/coverage-badge.json)](https://github.com/AndreaBonn/command-quiver/actions/workflows/ci.yml)
 [![Ruff](https://img.shields.io/badge/linter-ruff-261230.svg)](https://docs.astral.sh/ruff/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Security Policy](https://img.shields.io/badge/security-policy-blueviolet.svg)](SECURITY.md)
 
 </div>
@@ -107,7 +107,7 @@ For reporting vulnerabilities, see the [security policy](SECURITY.md).
 
 ## License
 
-Released under the MIT License -- see [LICENSE](LICENSE).
+Released under the Apache License 2.0 -- see [LICENSE](LICENSE).
 
 ## Author
 
