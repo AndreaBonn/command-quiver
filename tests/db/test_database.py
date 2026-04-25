@@ -112,7 +112,9 @@ class TestDatabaseRecreation:
         mock_conn.executescript.side_effect = sqlite3.Error("critical")
 
         with (
-            patch.object(db, "_connect", side_effect=lambda: setattr(db, "_connection", mock_conn)),
+            patch.object(
+                db, "_connect", side_effect=lambda **_: setattr(db, "_connection", mock_conn)
+            ),
             pytest.raises(sqlite3.Error, match="critical"),
         ):
             db._recreate()
