@@ -102,17 +102,20 @@ exec python3 -m command_quiver.main "\$@"
 WRAPPER
 chmod +x "$INSTALL_DIR/run.sh"
 
-# 6. Genera icone in hicolor per integrazione GNOME (dock, alt-tab)
+# 6. Installa icone in hicolor per integrazione GNOME (dock, alt-tab)
 APP_ID="com.github.commandquiver"
+ICON_SRC="$INSTALL_DIR/command_quiver/assets/icon.png"
 ICON_SIZES=(32 48 64 128)
 for SIZE in "${ICON_SIZES[@]}"; do
     ICON_DIR="$HOME/.local/share/icons/hicolor/${SIZE}x${SIZE}/apps"
     mkdir -p "$ICON_DIR"
     PYTHONPATH="$INSTALL_DIR" python3 -c "
-from command_quiver.app import CommandQuiverApp
-from pathlib import Path
-CommandQuiverApp._generate_icon(path=Path('$ICON_DIR/$APP_ID.png'), size=$SIZE)
-" 2>/dev/null || warn "Generazione icona ${SIZE}x${SIZE} fallita (non critico)"
+import gi
+gi.require_version('GdkPixbuf', '2.0')
+from gi.repository import GdkPixbuf
+pb = GdkPixbuf.Pixbuf.new_from_file_at_scale('$ICON_SRC', $SIZE, $SIZE, True)
+pb.savev('$ICON_DIR/$APP_ID.png', 'png', [], [])
+" 2>/dev/null || warn "Installazione icona ${SIZE}x${SIZE} fallita (non critico)"
 done
 # Aggiorna cache icone
 gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor/" 2>/dev/null || true

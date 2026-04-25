@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
-  <!-- Faretra (quiver) stilizzata -->
-  <!-- Contenitore faretra -->
-  <rect x="4" y="1" width="5" height="12" rx="1.5" ry="1.5" fill="none" stroke="#bebebe" stroke-width="1.2"/>
-  <!-- Frecce nella faretra -->
-  <line x1="6" y1="1" x2="6" y2="5" stroke="#bebebe" stroke-width="1" stroke-linecap="round"/>
-  <polyline points="4.5,3 6,1 7.5,3" fill="none" stroke="#bebebe" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
-  <line x1="8" y1="1.5" x2="8" y2="5.5" stroke="#bebebe" stroke-width="1" stroke-linecap="round"/>
-  <polyline points="6.5,3.5 8,1.5 9.5,3.5" fill="none" stroke="#bebebe" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Faretra (contenitore cilindrico) -->
+  <rect x="4.5" y="4" width="5" height="10" rx="1.5" ry="1.5" fill="none" stroke="#bebebe" stroke-width="1.2"/>
   <!-- Cinghia -->
-  <line x1="5" y1="13" x2="3" y2="15" stroke="#bebebe" stroke-width="1" stroke-linecap="round"/>
-  <line x1="8" y1="13" x2="10" y2="15" stroke="#bebebe" stroke-width="1" stroke-linecap="round"/>
+  <path d="M5 14 L3.5 15.5 M8.5 14 L10 15.5" fill="none" stroke="#bebebe" stroke-width="0.9" stroke-linecap="round"/>
+  <!-- Lettera C sulla faretra -->
+  <path d="M8.2 8.5 A1.5 1.5 0 1 0 8.2 10.5" fill="none" stroke="#bebebe" stroke-width="1" stroke-linecap="round"/>
+  <!-- Freccia 1: >  (terminale/shell) -->
+  <polyline points="4,3.5 5.5,1.5 7,3.5" fill="none" stroke="#bebebe" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="5.5" y1="1.5" x2="5.5" y2="5" stroke="#bebebe" stroke-width="1" stroke-linecap="round"/>
+  <!-- Freccia 2: {}  (codice) -->
+  <polyline points="7,3 8.5,1 10,3" fill="none" stroke="#bebebe" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="8.5" y1="1" x2="8.5" y2="4.5" stroke="#bebebe" stroke-width="1" stroke-linecap="round"/>
+  <!-- Arco decorativo (cerchio parziale) -->
+  <path d="M3 6 A5.5 5.5 0 0 0 3 12" fill="none" stroke="#bebebe" stroke-width="0.8" stroke-linecap="round"/>
+  <path d="M11 6 A5.5 5.5 0 0 1 11 12" fill="none" stroke="#bebebe" stroke-width="0.8" stroke-linecap="round"/>
 </svg>
