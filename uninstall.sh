@@ -23,9 +23,9 @@ echo -e "${YELLOW}╚═══════════════════�
 echo ""
 
 # 1. Termina il processo se in esecuzione
-if pgrep -f "command.quiver.*main.py" > /dev/null 2>&1; then
+if pgrep -f "command_quiver.main" > /dev/null 2>&1; then
     info "Terminazione processo in esecuzione..."
-    pkill -f "command.quiver.*main.py" || true
+    pkill -f "command_quiver.main" || true
     sleep 1
 fi
 

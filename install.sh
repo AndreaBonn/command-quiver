@@ -31,7 +31,16 @@ if [[ "$ID" != "ubuntu" && "$ID_LIKE" != *"ubuntu"* ]]; then
 fi
 info "Sistema rilevato: $PRETTY_NAME"
 
-# 1b. Verifica estensione GNOME AppIndicator (necessaria per il tray icon)
+# 1b. Verifica versione Python >= 3.10
+PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
+PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
+if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 10 ]; }; then
+    error "Python >= 3.10 richiesto. Versione trovata: $PYTHON_VERSION"
+fi
+info "Python $PYTHON_VERSION rilevato"
+
+# 1c. Verifica estensione GNOME AppIndicator (necessaria per il tray icon)
 if command -v gnome-extensions &>/dev/null; then
     if gnome-extensions list --enabled 2>/dev/null | grep -qi "appindicator"; then
         info "Estensione AppIndicator attiva"
@@ -88,7 +97,10 @@ info "Directory create"
 # 4. Copia il package Python mantenendo la struttura
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Rimuovi installazione precedente del package (se esiste)
-rm -rf "$INSTALL_DIR/command_quiver"
+if [ -d "$INSTALL_DIR/command_quiver" ]; then
+    info "Aggiornamento installazione esistente..."
+    rm -rf "$INSTALL_DIR/command_quiver"
+fi
 # Copia il package come sottodirectory → preserva gli import
 cp -r "$SCRIPT_DIR/command_quiver" "$INSTALL_DIR/command_quiver"
 info "Package copiato in $INSTALL_DIR/command_quiver"
@@ -121,28 +133,21 @@ done
 gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor/" 2>/dev/null || true
 info "Icone installate in ~/.local/share/icons/hicolor/"
 
-# 7. Crea file .desktop per GNOME (applications + autostart)
-DESKTOP_CONTENT="[Desktop Entry]
-Type=Application
-Name=Command Quiver
-Exec=env PYTHONPATH=$INSTALL_DIR python3 -m command_quiver.main
-Icon=$APP_ID
-Comment=Accesso rapido a prompt e comandi shell
-StartupNotify=true
-Categories=Utility;GTK;"
+# 7. Installa file .desktop da assets per GNOME (applications + autostart)
+DESKTOP_SRC="$INSTALL_DIR/command_quiver/assets/$APP_ID.desktop"
 
 # .desktop in applications (dock, alt-tab, GNOME search)
 APPS_DESKTOP="$HOME/.local/share/applications/$APP_ID.desktop"
-echo "$DESKTOP_CONTENT" > "$APPS_DESKTOP"
+cp "$DESKTOP_SRC" "$APPS_DESKTOP"
 info "Desktop file installato: $APPS_DESKTOP"
 
-# .desktop in autostart (avvio automatico al login)
-cat > "$DESKTOP_FILE" << DESKTOP
-$DESKTOP_CONTENT
+# .desktop in autostart (avvio automatico al login) — aggiunge flag autostart
+cp "$DESKTOP_SRC" "$DESKTOP_FILE"
+cat >> "$DESKTOP_FILE" << AUTOSTART_FLAGS
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
-DESKTOP
+AUTOSTART_FLAGS
 
 info "File autostart creato: $DESKTOP_FILE"
 
@@ -170,7 +175,7 @@ echo -e "${GREEN}║   Command Quiver installato con successo  ║${NC}"
 echo -e "${GREEN}╠══════════════════════════════════════════╣${NC}"
 echo -e "${GREEN}║${NC} App:      $INSTALL_DIR"
 echo -e "${GREEN}║${NC} Config:   $CONFIG_DIR"
-echo -e "${GREEN}║${NC} Database: $INSTALL_DIR/vault.db"
+echo -e "${GREEN}║${NC} Database: ~/.local/share/command-quiver/vault.db"
 echo -e "${GREEN}║${NC} Autostart: attivo al login"
 echo -e "${GREEN}║${NC}"
 echo -e "${GREEN}║${NC} Avvio:    ${YELLOW}command-quiver${NC}"
