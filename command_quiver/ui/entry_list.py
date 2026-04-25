@@ -23,7 +23,6 @@ class EntryRow(Gtk.Box):
         self,
         entry: Entry,
         on_click: Callable,
-        _on_delete_request: Callable | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.entry = entry

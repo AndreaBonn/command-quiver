@@ -2,13 +2,22 @@
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "command-quiver"
 DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "settings.json"
+
+VALID_LANGUAGES = ("it", "en")
+VALID_SORT_ORDERS = (
+    "alpha_asc",
+    "alpha_desc",
+    "chronological_asc",
+    "chronological_desc",
+    "personal",
+)
 
 
 @dataclass
@@ -22,26 +31,11 @@ class Settings:
     theme: str = "auto"
     language: str = "it"
 
-    VALID_LANGUAGES: tuple[str, ...] = field(
-        default=("it", "en"),
-        init=False,
-        repr=False,
-        compare=False,
-    )
-
-    # Valori ammessi per sort_order
-    VALID_SORT_ORDERS: tuple[str, ...] = field(
-        default=("alpha_asc", "alpha_desc", "chronological_asc", "chronological_desc", "personal"),
-        init=False,
-        repr=False,
-        compare=False,
-    )
-
     def __post_init__(self) -> None:
         """Valida i valori dopo l'inizializzazione."""
-        if self.sort_order not in self.VALID_SORT_ORDERS:
+        if self.sort_order not in VALID_SORT_ORDERS:
             self.sort_order = "chronological_desc"
-        if self.language not in self.VALID_LANGUAGES:
+        if self.language not in VALID_LANGUAGES:
             self.language = "it"
         if self.window_width < 300:
             self.window_width = 520
@@ -76,9 +70,6 @@ def save_settings(settings: Settings, config_path: Path | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     data = asdict(settings)
-    # Rimuovi campi non serializzabili
-    data.pop("VALID_SORT_ORDERS", None)
-    data.pop("VALID_LANGUAGES", None)
 
     path.write_text(
         json.dumps(data, indent=2, ensure_ascii=False) + "\n",

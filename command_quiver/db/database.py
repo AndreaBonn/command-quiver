@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ class Database:
             self._connect()
         return self._connection
 
-    def _connect(self) -> None:
+    def _connect(self, *, _allow_recreate: bool = True) -> None:
         """Apre la connessione e configura SQLite per integrità e performance."""
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -82,6 +83,8 @@ class Database:
             self._connection.execute("PRAGMA busy_timeout = 5000")
             logger.info("Connessione database aperta: %s", self._db_path)
         except sqlite3.Error:
+            if not _allow_recreate:
+                raise
             logger.exception("Errore apertura database, tentativo di ricreare")
             self._recreate()
 
@@ -101,11 +104,12 @@ class Database:
         logger.warning("Ricreazione database da zero: %s", self._db_path)
         self.close()
         if self._db_path.exists():
-            backup = self._db_path.with_suffix(".db.bak")
+            timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+            backup = self._db_path.with_suffix(f".db.bak.{timestamp}")
             self._db_path.rename(backup)
             logger.info("Backup database corrotto salvato in: %s", backup)
         try:
-            self._connect()
+            self._connect(_allow_recreate=False)
             self.connection.executescript(_SCHEMA_SQL)
             self.connection.executescript(_SEED_SQL)
             self.connection.commit()
