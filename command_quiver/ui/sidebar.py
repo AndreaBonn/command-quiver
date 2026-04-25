@@ -441,7 +441,7 @@ class SidebarPanel(Gtk.Window):
         _n_press: int,
         x: float,
         y: float,
-        section,
+        section: Section,
     ) -> None:
         """Mostra il menu contestuale per una sezione (rinomina/elimina)."""
         popup = Gtk.Popover()
