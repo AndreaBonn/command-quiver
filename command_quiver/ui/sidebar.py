@@ -15,6 +15,7 @@ from command_quiver.db.queries import (
     EntryCreate,
     EntryRepository,
     EntryUpdate,
+    Section,
     SectionRepository,
 )
 from command_quiver.ui.entry_editor import EntryEditorDialog
@@ -94,12 +95,39 @@ _APP_CSS = """
 """
 
 
+class SectionRow(Gtk.Box):
+    """Riga nella lista sezioni con attributi tipizzati."""
+
+    def __init__(
+        self,
+        label: str,
+        section_id: int | None,
+        section: Section | None = None,
+    ) -> None:
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.add_css_class("section-row")
+        self.section_id = section_id
+        self.section = section
+
+        name_label = Gtk.Label(label=label, xalign=0)
+        name_label.set_hexpand(True)
+        self.append(name_label)
+
+
 class SidebarPanel(Gtk.Window):
     """Pannello laterale principale dell'applicazione.
 
     Contiene: barra di ricerca, lista sezioni, lista voci,
     barra inferiore con azioni.
     """
+
+    _SORT_VALUES = [
+        "chronological_desc",
+        "chronological_asc",
+        "alpha_asc",
+        "alpha_desc",
+        "personal",
+    ]
 
     def __init__(
         self,
@@ -290,25 +318,18 @@ class SidebarPanel(Gtk.Window):
         self,
         label: str,
         section_id: int | None,
-        section=None,
-    ) -> Gtk.Box:
+        section: Section | None = None,
+    ) -> SectionRow:
         """Crea una riga nella lista sezioni."""
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        box.add_css_class("section-row")
-        box._section_id = section_id
-        box._section = section
-
-        name_label = Gtk.Label(label=label, xalign=0)
-        name_label.set_hexpand(True)
-        box.append(name_label)
+        row = SectionRow(label=label, section_id=section_id, section=section)
 
         # Menu contestuale (tasto destro) per rinomina/elimina
         if section is not None:
             gesture = Gtk.GestureClick(button=3)
             gesture.connect("pressed", self._on_section_right_click, section)
-            box.add_controller(gesture)
+            row.add_controller(gesture)
 
-        return box
+        return row
 
     def _select_current_section(self) -> None:
         """Seleziona la riga della sezione attualmente attiva."""
@@ -319,7 +340,7 @@ class SidebarPanel(Gtk.Window):
             if row is None:
                 break
             child = row.get_child()
-            if hasattr(child, "_section_id") and child._section_id == self._current_section_id:
+            if isinstance(child, SectionRow) and child.section_id == self._current_section_id:
                 idx = i
                 break
             i += 1
@@ -329,14 +350,7 @@ class SidebarPanel(Gtk.Window):
 
     def _refresh_entries(self) -> None:
         """Ricarica la lista voci con filtri attuali."""
-        sort_values = [
-            "chronological_desc",
-            "chronological_asc",
-            "alpha_asc",
-            "alpha_desc",
-            "personal",
-        ]
-        sort_order = sort_values[self._sort_dropdown.get_selected()]
+        sort_order = self._SORT_VALUES[self._sort_dropdown.get_selected()]
 
         entries = self._entry_repo.get_all(
             section_id=self._current_section_id,
@@ -357,20 +371,13 @@ class SidebarPanel(Gtk.Window):
         if row is None:
             return
         child = row.get_child()
-        if hasattr(child, "_section_id"):
-            self._current_section_id = child._section_id
+        if isinstance(child, SectionRow):
+            self._current_section_id = child.section_id
             self._refresh_entries()
 
     def _on_sort_changed(self, dropdown: Gtk.DropDown, _pspec) -> None:
         """Cambia l'ordinamento delle voci."""
-        sort_values = [
-            "chronological_desc",
-            "chronological_asc",
-            "alpha_asc",
-            "alpha_desc",
-            "personal",
-        ]
-        self._settings.sort_order = sort_values[dropdown.get_selected()]
+        self._settings.sort_order = self._SORT_VALUES[dropdown.get_selected()]
         save_settings(self._settings)
         self._refresh_entries()
 

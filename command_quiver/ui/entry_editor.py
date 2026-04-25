@@ -6,7 +6,7 @@ from collections.abc import Callable
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gdk, Gtk
+from gi.repository import Gdk, GLib, Gtk
 
 from command_quiver.core.clipboard import copy_to_clipboard
 from command_quiver.core.i18n import t
@@ -333,5 +333,5 @@ class EntryEditorDialog(Gtk.Window):
             if choice == 1 and self._on_delete:  # "Elimina"
                 self._on_delete(self._entry.id)
                 self.close()
-        except Exception:
-            logger.exception("Errore nella conferma eliminazione")
+        except GLib.Error:
+            logger.debug("Dialog eliminazione annullato dall'utente")
