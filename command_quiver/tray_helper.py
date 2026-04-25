@@ -10,8 +10,8 @@ Comunica con l'app principale via D-Bus:
 - "Esci" -> invia segnale Quit all'app
 """
 
+import logging
 import signal
-import sys
 from pathlib import Path
 
 import gi
@@ -23,6 +23,8 @@ from gi.repository import AyatanaAppIndicator3, Gio, GLib, Gtk
 from command_quiver.core.i18n import LANGUAGE_LABELS, SUPPORTED_LANGUAGES, Language, t
 from command_quiver.core.i18n import init as i18n_init
 from command_quiver.core.settings import load_settings
+
+logger = logging.getLogger(__name__)
 
 APP_ID = "com.github.commandquiver"
 DBUS_PATH = "/com/github/commandquiver"
@@ -45,7 +47,7 @@ def send_dbus_signal(action: str) -> None:
             None,
         )
     except GLib.Error as e:
-        print(f"Errore D-Bus: {e.message}", file=sys.stderr)
+        logger.error("Errore D-Bus: %s", e.message)
 
 
 def on_show(_item) -> None:
@@ -79,7 +81,7 @@ def _on_language_selected(item: Gtk.RadioMenuItem, lang: Language) -> None:
             None,
         )
     except GLib.Error as e:
-        print(f"Errore D-Bus ChangeLanguage: {e.message}", file=sys.stderr)
+        logger.error("Errore D-Bus ChangeLanguage: %s", e.message)
 
 
 def main() -> None:
