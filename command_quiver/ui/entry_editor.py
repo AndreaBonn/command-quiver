@@ -300,12 +300,7 @@ class EntryEditorDialog(Gtk.Window):
             return
 
         data = self._collect_data()
-
-        # Copia il contenuto
-        buffer = self._content_view.get_buffer()
-        start, end = buffer.get_bounds()
-        content = buffer.get_text(start, end, include_hidden_chars=False).strip()
-        copy_to_clipboard(content)
+        copy_to_clipboard(data.content)
 
         if self._on_save:
             self._on_save(data)
