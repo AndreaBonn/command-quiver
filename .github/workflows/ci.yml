@@ -18,6 +18,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
@@ -35,4 +37,60 @@ jobs:
       - run: uv sync --dev
 
       - name: Run tests
-        run: xvfb-run uv run pytest --cov=command_quiver --cov-report=term-missing --cov-fail-under=70
+        run: xvfb-run uv run pytest --cov=command_quiver --cov-report=term-missing --cov-report=json --cov-fail-under=70 --junitxml=test-results.xml
+
+      - name: Generate test badge
+        if: always()
+        run: |
+          python3 -c "
+          import json, xml.etree.ElementTree as ET, os
+          if not os.path.exists('test-results.xml'):
+              badge = {'schemaVersion': 1, 'label': 'tests', 'message': 'error', 'color': 'red'}
+          else:
+              root = ET.parse('test-results.xml').getroot()
+              suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]
+              tests = sum(int(s.attrib.get('tests', 0)) for s in suites)
+              failures = sum(int(s.attrib.get('failures', 0)) for s in suites)
+              errors = sum(int(s.attrib.get('errors', 0)) for s in suites)
+              passed = tests - failures - errors
+              if failures + errors > 0:
+                  badge = {'schemaVersion': 1, 'label': 'tests', 'message': f'{passed}/{tests} passed', 'color': 'red'}
+              else:
+                  badge = {'schemaVersion': 1, 'label': 'tests', 'message': f'{passed} passed', 'color': 'brightgreen'}
+          with open('badges/test-badge.json', 'w') as f:
+              json.dump(badge, f)
+          "
+
+      - name: Generate coverage badge
+        if: always()
+        run: |
+          python3 -c "
+          import json, os
+          summary_path = 'coverage.json'
+          if not os.path.exists(summary_path):
+              badge = {'schemaVersion': 1, 'label': 'coverage', 'message': 'N/A', 'color': 'lightgrey'}
+          else:
+              with open(summary_path) as f:
+                  data = json.load(f)
+              pct = float(data['totals']['percent_covered_display'])
+              if pct >= 90:
+                  color = 'brightgreen'
+              elif pct >= 80:
+                  color = 'green'
+              elif pct >= 60:
+                  color = 'yellow'
+              else:
+                  color = 'red'
+              badge = {'schemaVersion': 1, 'label': 'coverage', 'message': f'{pct:.0f}%', 'color': color}
+          with open('badges/coverage-badge.json', 'w') as f:
+              json.dump(badge, f)
+          "
+
+      - name: Commit badges
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add badges/test-badge.json badges/coverage-badge.json
+          git diff --cached --quiet || git commit -m "ci: update badges [skip ci]"
+          git push

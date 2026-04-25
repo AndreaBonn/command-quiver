@@ -16,3 +16,6 @@ venv/
 .pytest_cache/
 .coverage
 doc_progetto/
+coverage/
+test-results.xml
+coverage.json
