@@ -20,7 +20,7 @@ class SectionCreateDialog(Gtk.Window):
     def __init__(
         self,
         parent: Gtk.Window,
-        on_create: Callable,
+        on_create: Callable[[str], str | None],
     ) -> None:
         super().__init__(
             title=t("section.title_new"),
@@ -92,7 +92,7 @@ class SectionRenameDialog(Gtk.Window):
         self,
         parent: Gtk.Window,
         section: Section,
-        on_rename: Callable,
+        on_rename: Callable[[int, str], str | None],
     ) -> None:
         super().__init__(
             title=t("section.title_rename"),
@@ -160,7 +160,7 @@ class SectionRenameDialog(Gtk.Window):
 def show_delete_section_dialog(
     parent: Gtk.Window,
     section: Section,
-    on_confirm: Callable,
+    on_confirm: Callable[[int], None],
 ) -> None:
     """Mostra un dialog di conferma eliminazione sezione."""
     dialog = Gtk.AlertDialog(

@@ -22,8 +22,8 @@ class EntryRow(Gtk.Box):
     def __init__(
         self,
         entry: Entry,
-        on_click: Callable,
-        on_move: Callable | None = None,
+        on_click: Callable[[Entry], None],
+        on_move: Callable[[int, int], None] | None = None,
         show_move: bool = False,
         is_first: bool = False,
         is_last: bool = False,
@@ -124,8 +124,8 @@ class EntryListWidget(Gtk.Box):
 
     def __init__(
         self,
-        on_entry_click: Callable,
-        on_move: Callable | None = None,
+        on_entry_click: Callable[[Entry], None],
+        on_move: Callable[[int, int], None] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self._on_entry_click = on_entry_click

@@ -29,8 +29,8 @@ class EntryEditorDialog(Gtk.Window):
         parent: Gtk.Window,
         sections: list[Section],
         entry: Entry | None = None,
-        on_save: Callable | None = None,
-        on_delete: Callable | None = None,
+        on_save: Callable[[EntryCreate | EntryUpdate], None] | None = None,
+        on_delete: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__(
             title=t("editor.title_edit") if entry else t("editor.title_new"),
