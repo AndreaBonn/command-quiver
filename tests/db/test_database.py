@@ -84,8 +84,9 @@ class TestDatabaseRecreation:
         db = Database(db_path=db_path)
         db.initialize()
 
-        backup = db_path.with_suffix(".db.bak")
-        assert backup.exists()
+        backups = list(db_path.parent.glob("*.db.bak.*"))
+        assert len(backups) == 1
+        assert backups[0].stat().st_size > 0
         db.close()
 
     def test_recreate_without_existing_file(self, tmp_path: Path) -> None:

@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -101,7 +102,8 @@ class Database:
         logger.warning("Ricreazione database da zero: %s", self._db_path)
         self.close()
         if self._db_path.exists():
-            backup = self._db_path.with_suffix(".db.bak")
+            timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+            backup = self._db_path.with_suffix(f".db.bak.{timestamp}")
             self._db_path.rename(backup)
             logger.info("Backup database corrotto salvato in: %s", backup)
         try:
