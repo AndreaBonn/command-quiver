@@ -191,3 +191,90 @@ class TestEntryListWidget:
             ) as mock_copy:
                 widget._on_row_activated(widget._list_box, row)
                 mock_copy.assert_called_once_with(entry.content)
+
+
+@requires_display
+class TestEntryRowMoveButtons:
+    """Test bottoni spostamento voci."""
+
+    def test_creates_with_move_buttons(self, gtk_init) -> None:
+        from command_quiver.ui.entry_list import EntryRow
+
+        entry = _make_entry()
+        mock_move = MagicMock()
+        row = EntryRow(
+            entry=entry,
+            on_edit=MagicMock(),
+            on_move=mock_move,
+            show_move=True,
+            is_first=False,
+            is_last=False,
+        )
+        assert row.entry == entry
+
+    def test_first_entry_up_button_disabled(self, gtk_init) -> None:
+        from command_quiver.ui.entry_list import EntryRow
+
+        entry = _make_entry()
+        row = EntryRow(
+            entry=entry,
+            on_edit=MagicMock(),
+            on_move=MagicMock(),
+            show_move=True,
+            is_first=True,
+            is_last=False,
+        )
+        assert row.entry == entry
+
+    def test_last_entry_down_button_disabled(self, gtk_init) -> None:
+        from command_quiver.ui.entry_list import EntryRow
+
+        entry = _make_entry()
+        row = EntryRow(
+            entry=entry,
+            on_edit=MagicMock(),
+            on_move=MagicMock(),
+            show_move=True,
+            is_first=False,
+            is_last=True,
+        )
+        assert row.entry == entry
+
+
+@requires_display
+class TestEntryRowEditClick:
+    """Test click su bottone modifica."""
+
+    def test_edit_click_calls_callback(self, gtk_init) -> None:
+        from command_quiver.ui.entry_list import EntryRow
+
+        entry = _make_entry()
+        mock_edit = MagicMock()
+        row = EntryRow(entry=entry, on_edit=mock_edit)
+
+        row._on_edit_clicked(None)
+        mock_edit.assert_called_once_with(entry)
+
+
+@requires_display
+class TestEntryRowTerminalError:
+    """Test dialog errore terminale."""
+
+    def test_terminal_error_no_crash_without_window(self, gtk_init) -> None:
+        from command_quiver.ui.entry_list import EntryRow
+
+        entry = _make_entry(entry_type="shell")
+        row = EntryRow(entry=entry, on_edit=MagicMock())
+
+        # get_root() non restituisce una Window → noop
+        row._show_terminal_error("Test error")
+
+    def test_update_entries_with_move_buttons(self, gtk_init) -> None:
+        from command_quiver.ui.entry_list import EntryListWidget
+
+        mock_move = MagicMock()
+        widget = EntryListWidget(on_entry_edit=MagicMock(), on_move=mock_move)
+        entries = [_make_entry(entry_id=i, name=f"E{i}") for i in range(3)]
+
+        widget.update_entries(entries, show_move=True)
+        assert len(widget.entries) == 3

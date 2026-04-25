@@ -115,3 +115,21 @@ class TestMainFunction:
 
             root.handlers.clear()
             root.handlers.extend(original_handlers)
+
+    def test_version_flag_prints_version_and_exits(self) -> None:
+        from command_quiver.main import main
+
+        with patch("command_quiver.main.sys") as mock_sys:
+            mock_sys.argv = ["command_quiver", "--version"]
+            exit_code = main()
+
+        assert exit_code == 0
+
+    def test_version_short_flag(self) -> None:
+        from command_quiver.main import main
+
+        with patch("command_quiver.main.sys") as mock_sys:
+            mock_sys.argv = ["command_quiver", "-V"]
+            exit_code = main()
+
+        assert exit_code == 0

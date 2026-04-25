@@ -433,3 +433,103 @@ class TestEntryEdgeCases:
         )
         result = entries.get_all(sort_order="nonexistent_sort")
         assert len(result) == 1  # Funziona comunque con fallback
+
+    def test_get_by_id_returns_none_for_nonexistent(self, entries: EntryRepository) -> None:
+        assert entries.get_by_id(9999) is None
+
+    def test_update_position_nonexistent_returns_false(self, entries: EntryRepository) -> None:
+        assert entries.update_position(entry_id=9999, new_position=0) is False
+
+
+class TestImportEdgeCases:
+    """Test edge case import voci."""
+
+    @pytest.fixture
+    def sections(self, db: Database) -> SectionRepository:
+        return SectionRepository(db.connection)
+
+    @pytest.fixture
+    def entries(self, db: Database) -> EntryRepository:
+        return EntryRepository(db.connection)
+
+    def test_import_truncates_over_limit(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        """Import tronca dataset oltre MAX_IMPORT_ENTRIES."""
+        # Usiamo un limite ridotto per il test
+        original_limit = EntryRepository.MAX_IMPORT_ENTRIES
+        EntryRepository.MAX_IMPORT_ENTRIES = 3
+        try:
+            data = [{"name": f"entry_{i}", "content": f"content_{i}"} for i in range(10)]
+            imported = entries.import_entries(data=data, section_repo=sections)
+            assert imported == 3
+        finally:
+            EntryRepository.MAX_IMPORT_ENTRIES = original_limit
+
+    def test_import_invalid_type_defaults_to_prompt(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        """Tipo non valido viene normalizzato a 'prompt'."""
+        data = [
+            {"name": "test", "content": "content", "type": "invalid_type"},
+        ]
+        imported = entries.import_entries(data=data, section_repo=sections)
+        assert imported == 1
+
+        all_entries = entries.get_all()
+        assert all_entries[0].type == "prompt"
+
+    def test_import_whitespace_only_name_skipped(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        """Voci con nome solo whitespace vengono saltate."""
+        data = [
+            {"name": "   ", "content": "content"},
+        ]
+        imported = entries.import_entries(data=data, section_repo=sections)
+        assert imported == 0
+
+    def test_import_missing_fields_handled(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        """Voci senza campi obbligatori vengono gestite (convertite a str vuota)."""
+        data = [
+            {},  # Né nome né contenuto
+            {"name": "valid", "content": "ok"},
+        ]
+        imported = entries.import_entries(data=data, section_repo=sections)
+        assert imported == 1
+
+
+class TestGetAllPagination:
+    """Test paginazione di get_all."""
+
+    @pytest.fixture
+    def sections(self, db: Database) -> SectionRepository:
+        return SectionRepository(db.connection)
+
+    @pytest.fixture
+    def entries(self, db: Database) -> EntryRepository:
+        return EntryRepository(db.connection)
+
+    def test_get_all_with_limit(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        shell_id = sections.get_all()[0].id
+        for i in range(5):
+            entries.create(EntryCreate(name=f"e{i}", content=f"c{i}", section_id=shell_id))
+
+        result = entries.get_all(limit=2)
+        assert len(result) == 2
+
+    def test_get_all_with_offset(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        shell_id = sections.get_all()[0].id
+        for i in range(5):
+            entries.create(EntryCreate(name=f"e{i}", content=f"c{i}", section_id=shell_id))
+
+        all_entries = entries.get_all(sort_order="alpha_asc")
+        offset_entries = entries.get_all(sort_order="alpha_asc", offset=2)
+        assert len(offset_entries) == 3
+        assert offset_entries[0].name == all_entries[2].name

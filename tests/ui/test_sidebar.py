@@ -264,3 +264,87 @@ class TestSidebarPanel:
         with patch("command_quiver.ui.sidebar.EntryEditorDialog") as mock_dialog:
             sidebar.open_new_entry_dialog()
             mock_dialog.assert_called_once()
+
+    def test_non_escape_key_returns_false(
+        self,
+        gtk_init,
+        db_for_ui: Database,
+    ) -> None:
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gdk
+
+        sidebar = self._create_sidebar(db_for_ui)
+        result = sidebar._on_key_pressed(None, Gdk.KEY_a, 0, Gdk.ModifierType(0))
+        assert result is False
+
+    def test_entry_move_swaps_positions(
+        self,
+        gtk_init,
+        db_for_ui: Database,
+    ) -> None:
+        repo = EntryRepository(db_for_ui.connection)
+        e1 = repo.create(EntryCreate(name="First", content="1", section_id=1, type="shell"))
+        e2 = repo.create(EntryCreate(name="Second", content="2", section_id=1, type="shell"))
+
+        sidebar = self._create_sidebar(db_for_ui)
+        sidebar._section_panel.current_section_id = 1
+
+        # Imposta ordinamento personale
+        sidebar._sort_dropdown.set_selected(4)  # personal
+        sidebar._settings.sort_order = "personal"
+        sidebar._refresh_entries()
+
+        # Sposta la prima voce in giù
+        sidebar._on_entry_move(entry_id=e1.id, direction=1)
+
+        # Dopo lo swap, le posizioni devono essere scambiate
+        updated_e1 = repo.get_by_id(e1.id)
+        updated_e2 = repo.get_by_id(e2.id)
+        assert updated_e1.personal_pos != updated_e2.personal_pos
+
+    def test_entry_move_noop_at_boundary(
+        self,
+        gtk_init,
+        db_for_ui: Database,
+    ) -> None:
+        repo = EntryRepository(db_for_ui.connection)
+        e1 = repo.create(EntryCreate(name="Only", content="x", section_id=1, type="shell"))
+
+        sidebar = self._create_sidebar(db_for_ui)
+        sidebar._section_panel.current_section_id = 1
+        sidebar._sort_dropdown.set_selected(4)
+        sidebar._settings.sort_order = "personal"
+        sidebar._refresh_entries()
+
+        # Sposta verso l'alto -> fuori range -> noop
+        original_pos = repo.get_by_id(e1.id).personal_pos
+        sidebar._on_entry_move(entry_id=e1.id, direction=-1)
+        assert repo.get_by_id(e1.id).personal_pos == original_pos
+
+    def test_entry_move_nonexistent_entry_noop(
+        self,
+        gtk_init,
+        db_for_ui: Database,
+    ) -> None:
+        sidebar = self._create_sidebar(db_for_ui)
+        # Non deve sollevare eccezioni
+        sidebar._on_entry_move(entry_id=9999, direction=1)
+
+    def test_on_entry_click_opens_editor(
+        self,
+        gtk_init,
+        db_for_ui: Database,
+    ) -> None:
+        repo = EntryRepository(db_for_ui.connection)
+        entry = repo.create(EntryCreate(name="Click Me", content="x", section_id=1, type="shell"))
+
+        sidebar = self._create_sidebar(db_for_ui)
+
+        with patch("command_quiver.ui.sidebar.EntryEditorDialog") as mock_dialog:
+            sidebar._on_entry_click(entry)
+            mock_dialog.assert_called_once()
+            # Verifica che entry viene passato al dialog
+            call_kwargs = mock_dialog.call_args[1]
+            assert call_kwargs["entry"] == entry

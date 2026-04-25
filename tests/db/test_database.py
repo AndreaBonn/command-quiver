@@ -312,3 +312,94 @@ class TestAutoBackup:
         count = conn.execute("SELECT COUNT(*) FROM sections").fetchone()[0]
         assert count == 4
         conn.close()
+
+    def test_auto_backup_skips_when_db_not_exists(self, tmp_path: Path) -> None:
+        """_auto_backup non fa nulla se il file DB non esiste."""
+        db_path = tmp_path / "nonexistent.db"
+        db = Database(db_path=db_path)
+        db._auto_backup()  # Non deve sollevare eccezioni
+        backups = list(tmp_path.glob("*.auto.bak.*"))
+        assert len(backups) == 0
+
+    def test_auto_backup_handles_corrupted_counter(self, tmp_path: Path) -> None:
+        """Counter file con contenuto non numerico viene gestito."""
+        db_path = tmp_path / "vault.db"
+        counter_file = tmp_path / ".backup_counter"
+        counter_file.write_text("not_a_number")
+
+        db = Database(db_path=db_path)
+        db.initialize()
+        db.close()
+
+        # Counter resettato a 0 → incrementato a 1 → no backup (1 % 5 != 0)
+        assert counter_file.read_text() == "1"
+
+    def test_auto_backup_handles_counter_write_error(self, tmp_path: Path) -> None:
+        """Se il counter file non è scrivibile, il backup viene saltato."""
+        from unittest.mock import patch
+
+        db_path = tmp_path / "vault.db"
+        db = Database(db_path=db_path)
+        db.initialize()
+
+        with patch("command_quiver.db.database.Path.write_text", side_effect=OSError("perm")):
+            db._auto_backup()  # Non deve sollevare eccezioni
+
+        db.close()
+
+    def test_auto_backup_handles_sqlite_backup_error(self, tmp_path: Path) -> None:
+        """Errore SQLite durante backup non propaga eccezione."""
+        from unittest.mock import patch
+
+        db_path = tmp_path / "vault.db"
+        db = Database(db_path=db_path)
+        db.initialize()
+
+        # Resetta counter per triggerare backup alla prossima chiamata
+        counter_file = tmp_path / ".backup_counter"
+        counter_file.write_text(str(Database._BACKUP_EVERY_N - 1))
+
+        # Intercetta sqlite3.connect nel modulo database per far fallire il backup
+        def failing_connect(path, *args, **kwargs):
+            raise sqlite3.Error("backup connection fail")
+
+        with patch("command_quiver.db.database.sqlite3.connect", side_effect=failing_connect):
+            db._auto_backup()  # Non deve sollevare eccezioni
+
+        db.close()
+
+
+class TestDetectSchemaVersion:
+    """Test rilevamento versione schema legacy."""
+
+    def test_detect_returns_zero_without_is_default(self, tmp_path: Path) -> None:
+        """DB senza colonna is_default viene rilevato come v0."""
+        db_path = tmp_path / "old.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript("""
+            CREATE TABLE sections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                icon TEXT DEFAULT 'folder',
+                position INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                section_id INTEGER REFERENCES sections(id),
+                type TEXT DEFAULT 'prompt',
+                tags TEXT DEFAULT '',
+                personal_pos INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.close()
+
+        db = Database(db_path=db_path)
+        db._connect()
+        version = db._detect_schema_version()
+        assert version == 0
+        db.close()

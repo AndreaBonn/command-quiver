@@ -444,3 +444,103 @@ class TestEntryEditorKeyboard:
         )
         result = dialog._on_key_pressed(None, Gdk.KEY_a, 0, Gdk.ModifierType(0))
         assert result is False
+
+    def test_ctrl_enter_returns_true(self, gtk_init) -> None:
+        import gi
+
+        from command_quiver.ui.entry_editor import EntryEditorDialog
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gdk, Gtk
+
+        parent = Gtk.Window()
+        dialog = EntryEditorDialog(
+            parent=parent,
+            sections=_make_sections(),
+            on_save=MagicMock(),
+        )
+        result = dialog._on_key_pressed(None, Gdk.KEY_Return, 0, Gdk.ModifierType.CONTROL_MASK)
+        assert result is True
+
+
+@requires_display
+class TestEntryEditorDelete:
+    """Test eliminazione voce."""
+
+    def test_do_save_and_copy_invalid_does_not_copy(self, gtk_init) -> None:
+        import gi
+
+        from command_quiver.ui.entry_editor import EntryEditorDialog
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk
+
+        parent = Gtk.Window()
+        mock_save = MagicMock()
+        dialog = EntryEditorDialog(
+            parent=parent,
+            sections=_make_sections(),
+            on_save=mock_save,
+        )
+        # Campi vuoti
+        with patch("command_quiver.ui.entry_editor.copy_to_clipboard") as mock_copy:
+            dialog._do_save_and_copy()
+            mock_copy.assert_not_called()
+            mock_save.assert_not_called()
+
+    def test_delete_button_present_in_edit_mode(self, gtk_init) -> None:
+        import gi
+
+        from command_quiver.ui.entry_editor import EntryEditorDialog
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk
+
+        parent = Gtk.Window()
+        entry = _make_entry()
+        mock_delete = MagicMock()
+        dialog = EntryEditorDialog(
+            parent=parent,
+            sections=_make_sections(),
+            entry=entry,
+            on_save=MagicMock(),
+            on_delete=mock_delete,
+        )
+        assert dialog._is_edit is True
+
+    def test_no_delete_button_in_create_mode(self, gtk_init) -> None:
+        import gi
+
+        from command_quiver.ui.entry_editor import EntryEditorDialog
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk
+
+        parent = Gtk.Window()
+        dialog = EntryEditorDialog(
+            parent=parent,
+            sections=_make_sections(),
+            on_save=MagicMock(),
+        )
+        assert dialog._is_edit is False
+
+    def test_do_save_without_callback_noop(self, gtk_init) -> None:
+        import gi
+
+        from command_quiver.ui.entry_editor import EntryEditorDialog
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk
+
+        parent = Gtk.Window()
+        dialog = EntryEditorDialog(
+            parent=parent,
+            sections=_make_sections(),
+            on_save=None,
+        )
+        dialog._name_entry.set_text("Test")
+        buf = dialog._content_view.get_buffer()
+        buf.set_text("Content")
+
+        # Non deve sollevare eccezioni anche senza callback
+        dialog._do_save()
