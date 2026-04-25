@@ -101,6 +101,14 @@ class SidebarPanel(Gtk.Window):
     barra inferiore con azioni.
     """
 
+    _SORT_VALUES = [
+        "chronological_desc",
+        "chronological_asc",
+        "alpha_asc",
+        "alpha_desc",
+        "personal",
+    ]
+
     def __init__(
         self,
         db: Database,
@@ -329,14 +337,7 @@ class SidebarPanel(Gtk.Window):
 
     def _refresh_entries(self) -> None:
         """Ricarica la lista voci con filtri attuali."""
-        sort_values = [
-            "chronological_desc",
-            "chronological_asc",
-            "alpha_asc",
-            "alpha_desc",
-            "personal",
-        ]
-        sort_order = sort_values[self._sort_dropdown.get_selected()]
+        sort_order = self._SORT_VALUES[self._sort_dropdown.get_selected()]
 
         entries = self._entry_repo.get_all(
             section_id=self._current_section_id,
@@ -363,14 +364,7 @@ class SidebarPanel(Gtk.Window):
 
     def _on_sort_changed(self, dropdown: Gtk.DropDown, _pspec) -> None:
         """Cambia l'ordinamento delle voci."""
-        sort_values = [
-            "chronological_desc",
-            "chronological_asc",
-            "alpha_asc",
-            "alpha_desc",
-            "personal",
-        ]
-        self._settings.sort_order = sort_values[dropdown.get_selected()]
+        self._settings.sort_order = self._SORT_VALUES[dropdown.get_selected()]
         save_settings(self._settings)
         self._refresh_entries()
 
