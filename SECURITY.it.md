@@ -27,7 +27,7 @@ Il report dovrebbe includere:
 
 ## Misure di sicurezza
 
-Command Quiver è un'applicazione desktop locale senza componenti esposti in rete. Non gestisce autenticazione, connessioni remote o credenziali utente. Le seguenti misure sono implementate:
+Command Quiver by Bonn è un'applicazione desktop locale senza componenti esposti in rete. Non gestisce autenticazione, connessioni remote o credenziali utente. Le seguenti misure sono implementate:
 
 - **Query parametrizzate**: tutte le operazioni database usano placeholder `?`, nessuna concatenazione di stringhe (`db/queries.py`)
 - **Validazione input**: le impostazioni vengono validate al caricamento con valori limitati e controlli su insiemi ammessi (`core/settings.py:40-49`)

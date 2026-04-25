@@ -27,7 +27,7 @@ Your report should include:
 
 ## Security Measures
 
-Command Quiver is a local desktop application with no network-facing components. It does not handle authentication, remote connections, or sensitive user credentials. The following measures are implemented:
+Command Quiver by Bonn is a local desktop application with no network-facing components. It does not handle authentication, remote connections, or sensitive user credentials. The following measures are implemented:
 
 - **Parameterized queries**: all database operations use `?` placeholders, no string concatenation (`db/queries.py`)
 - **Input validation**: settings are validated on load with bounded values and allowed-set checks (`core/settings.py:40-49`)

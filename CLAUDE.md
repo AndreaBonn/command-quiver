@@ -1,4 +1,4 @@
-# Command Quiver
+# Command Quiver by Bonn
 
 App desktop Ubuntu per system tray GNOME. Libreria personale di prompt AI e comandi shell, ricercabili e organizzati in sezioni.
 

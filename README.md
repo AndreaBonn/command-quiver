@@ -1,6 +1,6 @@
 **English** | [Italiano](README.it.md)
 
-# Command Quiver
+# Command Quiver by Bonn
 
 A personal library of AI prompts and shell commands, accessible from the GNOME system tray. Search, organize by sections, copy to clipboard or execute in terminal.
 
@@ -17,7 +17,7 @@ A personal library of AI prompts and shell commands, accessible from the GNOME s
 
 ## Overview
 
-Command Quiver lives in your GNOME system tray and gives you quick access to frequently used AI prompts and shell commands. Entries are stored in a local SQLite database, organized into sections, and searchable by name. Prompts are copied to the clipboard; shell commands can be executed directly in gnome-terminal.
+Command Quiver by Bonn lives in your GNOME system tray and gives you quick access to frequently used AI prompts and shell commands. Entries are stored in a local SQLite database, organized into sections, and searchable by name. Prompts are copied to the clipboard; shell commands can be executed directly in gnome-terminal.
 
 ## Features
 
