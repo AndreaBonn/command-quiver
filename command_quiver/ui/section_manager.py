@@ -6,7 +6,7 @@ from collections.abc import Callable
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk
+from gi.repository import GLib, Gtk
 
 from command_quiver.core.i18n import t
 from command_quiver.db.queries import Section
@@ -162,7 +162,7 @@ def show_delete_section_dialog(
             choice = dialog_obj.choose_finish(result)
             if choice == 1:
                 on_confirm(section.id)
-        except Exception:
-            logger.exception("Errore nella conferma eliminazione sezione")
+        except GLib.Error:
+            logger.debug("Dialog eliminazione sezione annullato dall'utente")
 
     dialog.choose(parent, None, _on_response)
