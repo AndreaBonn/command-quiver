@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Command Quiver
+Comment=Libreria personale di prompt AI e comandi shell
+Exec=command-quiver
+Icon=com.github.commandquiver
+Categories=Utility;
+Keywords=prompt;command;shell;ai;clipboard;
+StartupNotify=true
+Terminal=false
