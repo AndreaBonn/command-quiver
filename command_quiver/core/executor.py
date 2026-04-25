@@ -1,6 +1,7 @@
 """Esecuzione comandi shell in una nuova finestra gnome-terminal."""
 
 import logging
+import shlex
 import shutil
 import subprocess
 
@@ -40,10 +41,11 @@ def execute_in_terminal(command: str) -> bool:
     if not shutil.which("gnome-terminal"):
         raise TerminalNotFoundError()
 
-    # Il comando viene wrappato in bash -c con prompt finale
-    # per mantenere il terminale aperto dopo l'esecuzione
-    press_enter_msg = t("executor.press_enter").replace("'", "'\\''")
-    wrapped = f"{command}; echo $'{press_enter_msg}'; read"
+    # Il comando utente viene quotato per evitare che caratteri speciali
+    # nel prompt di "premi INVIO" rompano la concatenazione bash.
+    # Il comando stesso viene eseguito letteralmente (è ciò che l'utente vuole).
+    press_enter_msg = t("executor.press_enter")
+    wrapped = f"{command}; echo {shlex.quote(press_enter_msg)}; read"
 
     try:
         subprocess.Popen(

@@ -8,6 +8,17 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+# --- Eccezioni ---
+
+
+class DuplicateSectionError(Exception):
+    """Errore sollevato quando si tenta di creare/rinominare una sezione con nome duplicato."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        super().__init__(f"Sezione '{name}' esiste già")
+
+
 # --- Modelli dati ---
 
 
@@ -113,8 +124,25 @@ class SectionRepository:
         self._conn.commit()
         return cursor.lastrowid
 
+    def exists(self, name: str) -> bool:
+        """Verifica se una sezione con questo nome esiste già (case-insensitive)."""
+        cursor = self._conn.execute(
+            "SELECT 1 FROM sections WHERE UNICODE_LOWER(name) = UNICODE_LOWER(?)",
+            (name,),
+        )
+        return cursor.fetchone() is not None
+
     def create(self, name: str, icon: str = "folder") -> Section:
-        """Crea una nuova sezione. La posizione viene assegnata automaticamente."""
+        """Crea una nuova sezione. La posizione viene assegnata automaticamente.
+
+        Raises
+        ------
+        DuplicateSectionError
+            Se una sezione con lo stesso nome esiste già.
+        """
+        if self.exists(name):
+            raise DuplicateSectionError(name)
+
         # Prossima posizione disponibile
         cursor = self._conn.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM sections")
         next_pos = cursor.fetchone()[0]
@@ -128,7 +156,21 @@ class SectionRepository:
         return Section(id=cursor.lastrowid, name=name, icon=icon, position=next_pos)
 
     def rename(self, section_id: int, new_name: str) -> bool:
-        """Rinomina una sezione. Restituisce True se modificata."""
+        """Rinomina una sezione. Restituisce True se modificata.
+
+        Raises
+        ------
+        DuplicateSectionError
+            Se una sezione con lo stesso nome esiste già.
+        """
+        # Verifica duplicato escludendo la sezione corrente
+        cursor = self._conn.execute(
+            "SELECT 1 FROM sections WHERE UNICODE_LOWER(name) = UNICODE_LOWER(?) AND id != ?",
+            (new_name, section_id),
+        )
+        if cursor.fetchone() is not None:
+            raise DuplicateSectionError(new_name)
+
         cursor = self._conn.execute(
             "UPDATE sections SET name = ? WHERE id = ?",
             (new_name, section_id),
@@ -175,13 +217,26 @@ class EntryRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._conn = connection
 
+    # Limite ragionevole per evitare OOM con DB enormi
+    DEFAULT_LIMIT = 500
+
     def get_all(
         self,
         section_id: int | None = None,
         search: str = "",
         sort_order: str = "chronological_desc",
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[Entry]:
-        """Restituisce le voci filtrate per sezione e/o ricerca, ordinate."""
+        """Restituisce le voci filtrate per sezione e/o ricerca, ordinate.
+
+        Parameters
+        ----------
+        limit : int | None
+            Numero massimo di risultati. Default: DEFAULT_LIMIT.
+        offset : int
+            Numero di risultati da saltare (per paginazione).
+        """
         order = self._SORT_CLAUSES.get(sort_order, "e.created_at DESC")
         conditions: list[str] = []
         params: list[str | int] = []
@@ -200,6 +255,9 @@ class EntryRepository:
 
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
+        effective_limit = limit if limit is not None else self.DEFAULT_LIMIT
+        params.extend([effective_limit, offset])
+
         cursor = self._conn.execute(
             f"""
             SELECT e.id, e.name, e.content, e.section_id, e.type,
@@ -209,6 +267,7 @@ class EntryRepository:
             LEFT JOIN sections s ON s.id = e.section_id
             {where}
             ORDER BY {order}
+            LIMIT ? OFFSET ?
         """,
             params,
         )
@@ -296,3 +355,59 @@ class EntryRepository:
         """Conteggio totale delle voci."""
         cursor = self._conn.execute("SELECT COUNT(*) FROM entries")
         return cursor.fetchone()[0]
+
+    def export_all(self) -> list[dict]:
+        """Esporta tutte le voci come lista di dizionari (per backup JSON)."""
+        cursor = self._conn.execute("""
+            SELECT e.name, e.content, e.type, e.tags,
+                   COALESCE(s.name, 'Generale') AS section_name
+            FROM entries e
+            LEFT JOIN sections s ON s.id = e.section_id
+            ORDER BY e.created_at ASC
+        """)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def import_entries(
+        self,
+        data: list[dict],
+        section_repo: "SectionRepository",
+    ) -> int:
+        """Importa voci da una lista di dizionari. Restituisce il numero importato.
+
+        Crea sezioni mancanti automaticamente. Salta voci con dati invalidi.
+        """
+        imported = 0
+        # Cache sezioni per nome
+        section_map: dict[str, int] = {s.name: s.id for s in section_repo.get_all()}
+
+        for item in data:
+            name = item.get("name", "").strip()
+            content = item.get("content", "").strip()
+            if not name or not content:
+                continue
+
+            entry_type = item.get("type", "prompt")
+            if entry_type not in ("prompt", "shell"):
+                entry_type = "prompt"
+
+            tags = item.get("tags", "")
+            section_name = item.get("section_name", "Generale")
+
+            # Crea sezione se non esiste
+            if section_name not in section_map:
+                section = section_repo.create(name=section_name)
+                section_map[section_name] = section.id
+
+            self.create(
+                EntryCreate(
+                    name=name,
+                    content=content,
+                    section_id=section_map[section_name],
+                    type=entry_type,
+                    tags=tags,
+                )
+            )
+            imported += 1
+
+        logger.info("Importate %d voci su %d", imported, len(data))
+        return imported

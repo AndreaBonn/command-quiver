@@ -13,20 +13,24 @@ App desktop Ubuntu per system tray GNOME. Libreria personale di prompt AI e coma
 
 ```
 command_quiver/
-├── main.py          # Entry point, logging, single instance
-├── app.py           # GtkApplication + StatusNotifierItem tray
+├── main.py          # Entry point, logging, --version flag
+├── app.py           # GtkApplication lifecycle, tray health check, D-Bus
+├── tray_helper.py   # Processo separato GTK3 + AyatanaAppIndicator3
 ├── db/
-│   ├── database.py  # Connessione SQLite, schema, seed
-│   └── queries.py   # Repository CRUD (sections, entries)
+│   ├── database.py  # SQLite, schema, migration system (PRAGMA user_version), auto-backup
+│   └── queries.py   # Repository CRUD, export/import JSON, paginazione
 ├── core/
 │   ├── clipboard.py # Copia negli appunti via GDK4
-│   ├── executor.py  # Esecuzione comandi in gnome-terminal
+│   ├── executor.py  # Esecuzione comandi in gnome-terminal (shlex.quote)
+│   ├── i18n.py      # Internazionalizzazione it/en
 │   └── settings.py  # Config JSON persistente
 ├── ui/
-│   ├── sidebar.py        # Pannello laterale principale
-│   ├── entry_list.py     # Lista voci con ordinamento
+│   ├── sidebar.py        # Pannello laterale (debounce search, sort personale)
+│   ├── entry_list.py     # Lista voci con ordinamento e move up/down
 │   ├── entry_editor.py   # Dialog creazione/modifica
-│   └── section_manager.py # Dialog gestione sezioni
+│   ├── section_panel.py  # Pannello sezioni con CRUD
+│   ├── section_manager.py # Dialog gestione sezioni (validazione duplicati)
+│   └── styles.py         # CSS theme-aware (@success_color, @accent_color)
 └── assets/
     └── icon.png     # Icona tray 32x32
 ```
@@ -38,11 +42,14 @@ command_quiver/
 - Logging con RotatingFileHandler (~/.local/share/command-quiver/logs/)
 - DB path: ~/.local/share/command-quiver/vault.db
 - Config path: ~/.config/command-quiver/settings.json
-- Lock file: /tmp/command-quiver.lock
+- Single instance: GtkApplication + D-Bus (FLAGS_NONE)
+- Backup auto DB: ogni 5 avvii, max 3 copie
 
 ## Architettura tray icon
 
-StatusNotifierItem via D-Bus puro (Gio.DBusConnection), nessuna dipendenza GTK3.
+Processo separato (tray_helper.py) con GTK3 + AyatanaAppIndicator3.
+GTK3 e GTK4 non coesistono nello stesso processo.
+Comunicazione via D-Bus. Health check ogni 10s con auto-restart.
 Compatibile con GNOME Shell + estensione AppIndicator (preinstallata su Ubuntu).
 
 ## Comandi

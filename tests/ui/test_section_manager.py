@@ -42,7 +42,7 @@ class TestSectionCreateDialog:
         mock_create.assert_not_called()
 
     def test_calls_on_create_with_valid_name(self, gtk_init) -> None:
-        mock_create = MagicMock()
+        mock_create = MagicMock(return_value=None)
         dialog = self._create_dialog(on_create=mock_create)
         dialog._name_entry.set_text("Docker")
 
@@ -50,12 +50,21 @@ class TestSectionCreateDialog:
         mock_create.assert_called_once_with("Docker")
 
     def test_strips_whitespace_from_name(self, gtk_init) -> None:
-        mock_create = MagicMock()
+        mock_create = MagicMock(return_value=None)
         dialog = self._create_dialog(on_create=mock_create)
         dialog._name_entry.set_text("  Docker  ")
 
         dialog._do_create()
         mock_create.assert_called_once_with("Docker")
+
+    def test_shows_error_on_duplicate_name(self, gtk_init) -> None:
+        mock_create = MagicMock(return_value="Sezione già esistente")
+        dialog = self._create_dialog(on_create=mock_create)
+        dialog._name_entry.set_text("Docker")
+
+        dialog._do_create()
+        assert dialog._error_label.get_visible() is True
+        assert "già esistente" in dialog._error_label.get_label()
 
 
 @requires_display
@@ -84,13 +93,22 @@ class TestSectionRenameDialog:
         assert dialog._name_entry.get_text() == "Old Name"
 
     def test_calls_on_rename_with_new_name(self, gtk_init) -> None:
-        mock_rename = MagicMock()
+        mock_rename = MagicMock(return_value=None)
         section = Section(id=5, name="Old", position=0)
         dialog = self._create_dialog(section=section, on_rename=mock_rename)
         dialog._name_entry.set_text("New Name")
 
         dialog._do_rename()
         mock_rename.assert_called_once_with(5, "New Name")
+
+    def test_shows_error_on_duplicate_rename(self, gtk_init) -> None:
+        mock_rename = MagicMock(return_value="Nome già esistente")
+        section = Section(id=5, name="Old", position=0)
+        dialog = self._create_dialog(section=section, on_rename=mock_rename)
+        dialog._name_entry.set_text("Existing")
+
+        dialog._do_rename()
+        assert dialog._error_label.get_visible() is True
 
     def test_does_not_rename_if_same_name(self, gtk_init) -> None:
         mock_rename = MagicMock()

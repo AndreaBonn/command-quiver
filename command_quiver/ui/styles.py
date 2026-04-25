@@ -39,18 +39,18 @@ APP_CSS = """
     border-radius: 4px;
 }
 .badge-shell {
-    background-color: alpha(#2ecc71, 0.2);
-    color: #27ae60;
+    background-color: alpha(@success_color, 0.2);
+    color: @success_color;
 }
 .badge-prompt {
-    background-color: alpha(#3498db, 0.2);
-    color: #2980b9;
+    background-color: alpha(@accent_color, 0.2);
+    color: @accent_color;
 }
 .copy-success {
-    color: #27ae60;
+    color: @success_color;
 }
 .error-label {
-    color: #e74c3c;
+    color: @error_color;
     font-size: 0.85em;
 }
 .content-editor {

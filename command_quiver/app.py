@@ -58,6 +58,8 @@ class CommandQuiverApp(Gtk.Application):
         self._settings = None
         self._sidebar: SidebarPanel | None = None
         self._tray_process: subprocess.Popen | None = None
+        self._tray_helper_path: Path | None = None
+        self._tray_health_source: int = 0
         self._dbus_reg_id = 0
 
     def do_startup(self) -> None:
@@ -162,20 +164,38 @@ class CommandQuiverApp(Gtk.Application):
 
     def _start_tray_helper(self) -> None:
         """Avvia il processo tray helper (GTK3 + AyatanaAppIndicator3)."""
-        helper_path = Path(__file__).resolve().parent / "tray_helper.py"
-        if not helper_path.exists():
-            logger.warning("Tray helper non trovato: %s", helper_path)
+        self._tray_helper_path = Path(__file__).resolve().parent / "tray_helper.py"
+        if not self._tray_helper_path.exists():
+            logger.warning("Tray helper non trovato: %s", self._tray_helper_path)
             return
 
+        self._launch_tray_process()
+        # Health check periodico ogni 10 secondi
+        self._tray_health_source = GLib.timeout_add_seconds(10, self._check_tray_health)
+
+    def _launch_tray_process(self) -> bool:
+        """Lancia il processo tray helper. Restituisce True se avviato."""
         try:
             self._tray_process = subprocess.Popen(
-                [sys.executable, str(helper_path)],
+                [sys.executable, str(self._tray_helper_path)],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
             logger.info("Tray helper avviato (PID: %d)", self._tray_process.pid)
+            return True
         except OSError:
             logger.exception("Errore avvio tray helper")
+            return False
+
+    def _check_tray_health(self) -> bool:
+        """Verifica che il tray helper sia attivo; riavvia se crashato."""
+        if self._tray_process is None:
+            return False  # Rimuovi il timeout
+        if self._tray_process.poll() is not None:
+            exit_code = self._tray_process.returncode
+            logger.warning("Tray helper terminato inatteso (exit code: %d), riavvio", exit_code)
+            self._launch_tray_process()
+        return True  # Continua il polling
 
     def _stop_tray_helper(self) -> None:
         """Termina il processo tray helper."""
@@ -236,6 +256,11 @@ class CommandQuiverApp(Gtk.Application):
     def _quit_app(self) -> None:
         """Chiusura ordinata dell'applicazione."""
         logger.info("Chiusura Command Quiver")
+
+        # Ferma health check prima di terminare il tray
+        if self._tray_health_source:
+            GLib.source_remove(self._tray_health_source)
+            self._tray_health_source = 0
 
         self._stop_tray_helper()
 

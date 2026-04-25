@@ -23,6 +23,10 @@ class EntryRow(Gtk.Box):
         self,
         entry: Entry,
         on_click: Callable,
+        on_move: Callable | None = None,
+        show_move: bool = False,
+        is_first: bool = False,
+        is_last: bool = False,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.entry = entry
@@ -32,6 +36,22 @@ class EntryRow(Gtk.Box):
         self.set_margin_end(8)
         self.set_margin_top(4)
         self.set_margin_bottom(4)
+
+        # Bottoni spostamento (solo ordinamento personale)
+        if show_move and on_move:
+            move_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            up_btn = Gtk.Button(icon_name="go-up-symbolic")
+            up_btn.add_css_class("flat")
+            up_btn.set_sensitive(not is_first)
+            up_btn.connect("clicked", lambda _: on_move(entry.id, -1))
+            move_box.append(up_btn)
+
+            down_btn = Gtk.Button(icon_name="go-down-symbolic")
+            down_btn.add_css_class("flat")
+            down_btn.set_sensitive(not is_last)
+            down_btn.connect("clicked", lambda _: on_move(entry.id, 1))
+            move_box.append(down_btn)
+            self.append(move_box)
 
         # Nome voce (troncato a 40 caratteri)
         display_name = entry.name[:40] + "\u2026" if len(entry.name) > 40 else entry.name
@@ -102,10 +122,16 @@ class EntryRow(Gtk.Box):
 class EntryListWidget(Gtk.Box):
     """Widget contenente la lista scrollabile delle voci con ordinamento."""
 
-    def __init__(self, on_entry_click: Callable) -> None:
+    def __init__(
+        self,
+        on_entry_click: Callable,
+        on_move: Callable | None = None,
+    ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self._on_entry_click = on_entry_click
+        self._on_move = on_move
         self._entries: list[Entry] = []
+        self._show_move = False
 
         # Container scrollabile per la lista
         self._scrolled = Gtk.ScrolledWindow(vexpand=True, hexpand=True)
@@ -146,9 +172,10 @@ class EntryListWidget(Gtk.Box):
 
         return box
 
-    def update_entries(self, entries: list[Entry]) -> None:
+    def update_entries(self, entries: list[Entry], show_move: bool = False) -> None:
         """Aggiorna la lista con le voci fornite."""
         self._entries = entries
+        self._show_move = show_move
 
         # Rimuovi tutte le righe esistenti
         while True:
@@ -158,10 +185,15 @@ class EntryListWidget(Gtk.Box):
             self._list_box.remove(row)
 
         # Aggiungi le nuove righe
-        for entry in entries:
+        total = len(entries)
+        for i, entry in enumerate(entries):
             row_widget = EntryRow(
                 entry=entry,
                 on_click=self._on_entry_click,
+                on_move=self._on_move if show_move else None,
+                show_move=show_move,
+                is_first=(i == 0),
+                is_last=(i == total - 1),
             )
             self._list_box.append(row_widget)
 

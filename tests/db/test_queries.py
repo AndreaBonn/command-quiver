@@ -6,6 +6,7 @@ import pytest
 
 from command_quiver.db.database import Database
 from command_quiver.db.queries import (
+    DuplicateSectionError,
     EntryCreate,
     EntryRepository,
     EntryUpdate,
@@ -98,6 +99,31 @@ class TestSectionRepository:
 
     def test_get_by_id_returns_none_for_nonexistent(self, sections: SectionRepository) -> None:
         assert sections.get_by_id(9999) is None
+
+    def test_create_duplicate_section_raises(self, sections: SectionRepository) -> None:
+        sections.create(name="Docker")
+        with pytest.raises(DuplicateSectionError):
+            sections.create(name="Docker")
+
+    def test_create_duplicate_case_insensitive_raises(self, sections: SectionRepository) -> None:
+        sections.create(name="Docker")
+        with pytest.raises(DuplicateSectionError):
+            sections.create(name="docker")
+
+    def test_rename_to_duplicate_raises(self, sections: SectionRepository) -> None:
+        all_sections = sections.get_all()
+        with pytest.raises(DuplicateSectionError):
+            sections.rename(section_id=all_sections[0].id, new_name="AI Prompts")
+
+    def test_rename_same_name_different_case_raises(self, sections: SectionRepository) -> None:
+        all_sections = sections.get_all()
+        with pytest.raises(DuplicateSectionError):
+            sections.rename(section_id=all_sections[0].id, new_name="ai prompts")
+
+    def test_exists_case_insensitive(self, sections: SectionRepository) -> None:
+        assert sections.exists("shell commands") is True
+        assert sections.exists("Shell Commands") is True
+        assert sections.exists("nonexistent") is False
 
 
 # --- Test EntryRepository ---
@@ -280,6 +306,89 @@ class TestSectionEdgeCases:
         section = sections.get_by_id(default_id)
         assert section.name == "Generale"
         assert section.is_default == 1
+
+
+class TestExportImport:
+    """Test export e import voci."""
+
+    def test_export_returns_all_entries(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        shell_id = sections.get_all()[0].id
+        entries.create(
+            EntryCreate(name="cmd1", content="echo 1", section_id=shell_id, type="shell")
+        )
+        entries.create(
+            EntryCreate(name="cmd2", content="echo 2", section_id=shell_id, type="shell")
+        )
+
+        exported = entries.export_all()
+        assert len(exported) == 2
+        assert exported[0]["name"] == "cmd1"
+        assert exported[0]["section_name"] == "Shell Commands"
+
+    def test_import_creates_entries(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        data = [
+            {"name": "test1", "content": "echo test", "type": "shell", "section_name": "Git"},
+            {"name": "test2", "content": "prompt text", "type": "prompt", "section_name": "Git"},
+        ]
+
+        imported = entries.import_entries(data=data, section_repo=sections)
+        assert imported == 2
+        assert entries.count_all() == 2
+
+    def test_import_creates_missing_sections(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        data = [
+            {"name": "x", "content": "y", "section_name": "NewSection"},
+        ]
+        entries.import_entries(data=data, section_repo=sections)
+
+        all_sections = sections.get_all()
+        names = [s.name for s in all_sections]
+        assert "NewSection" in names
+
+    def test_import_skips_invalid_entries(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        data = [
+            {"name": "", "content": "no name"},
+            {"name": "no content", "content": ""},
+            {"name": "valid", "content": "ok"},
+        ]
+        imported = entries.import_entries(data=data, section_repo=sections)
+        assert imported == 1
+
+    def test_export_import_roundtrip(
+        self, entries: EntryRepository, sections: SectionRepository
+    ) -> None:
+        shell_id = sections.get_all()[0].id
+        entries.create(
+            EntryCreate(
+                name="roundtrip",
+                content="echo hello",
+                section_id=shell_id,
+                type="shell",
+                tags="test,rt",
+            )
+        )
+
+        exported = entries.export_all()
+        assert len(exported) == 1
+
+        # Pulisci e reimporta
+        entries.delete(entries.get_all()[0].id)
+        assert entries.count_all() == 0
+
+        imported = entries.import_entries(data=exported, section_repo=sections)
+        assert imported == 1
+
+        result = entries.get_all()
+        assert result[0].name == "roundtrip"
+        assert result[0].tags == "test,rt"
 
     def test_get_default_section_id_finds_renamed_default(self, db: Database) -> None:
         """Se la sezione default viene rinominata, il flag is_default la identifica."""

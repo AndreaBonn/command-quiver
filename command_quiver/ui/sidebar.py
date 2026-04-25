@@ -37,6 +37,7 @@ class SidebarPanel(Gtk.Window):
         "chronological_asc",
         "alpha_asc",
         "alpha_desc",
+        "personal",
     ]
 
     def __init__(
@@ -56,6 +57,7 @@ class SidebarPanel(Gtk.Window):
         self._section_repo = SectionRepository(db.connection)
         self._entry_repo = EntryRepository(db.connection)
         self._search_text = ""
+        self._search_debounce_id: int = 0
 
         load_app_css()
         self._build_ui()
@@ -102,7 +104,10 @@ class SidebarPanel(Gtk.Window):
         # Colonna voci (destra)
         right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
 
-        self._entry_list = EntryListWidget(on_entry_click=self._on_entry_click)
+        self._entry_list = EntryListWidget(
+            on_entry_click=self._on_entry_click,
+            on_move=self._on_entry_move,
+        )
         right_box.append(self._entry_list)
 
         # Menu ordinamento
@@ -120,6 +125,7 @@ class SidebarPanel(Gtk.Window):
             t("sidebar.sort_oldest_asc"),
             t("sidebar.sort_alpha_asc"),
             t("sidebar.sort_alpha_desc"),
+            t("sidebar.sort_personal"),
         ]
         self._sort_dropdown = Gtk.DropDown()
         self._sort_dropdown.set_model(Gtk.StringList.new(sort_options))
@@ -131,6 +137,7 @@ class SidebarPanel(Gtk.Window):
             "chronological_asc": 1,
             "alpha_asc": 2,
             "alpha_desc": 3,
+            "personal": 4,
         }
         self._sort_dropdown.set_selected(sort_map.get(self._settings.sort_order, 0))
         self._sort_dropdown.connect("notify::selected", self._on_sort_changed)
@@ -165,14 +172,25 @@ class SidebarPanel(Gtk.Window):
             search=self._search_text,
             sort_order=sort_order,
         )
-        self._entry_list.update_entries(entries)
+        self._entry_list.update_entries(entries, show_move=(sort_order == "personal"))
 
     # --- Handler eventi ---
 
     def _on_search_changed(self, entry: Gtk.SearchEntry) -> None:
-        """Filtra le voci in tempo reale durante la ricerca."""
+        """Filtra le voci con debounce 250ms per evitare query a ogni keystroke."""
+        from gi.repository import GLib
+
+        if self._search_debounce_id:
+            GLib.source_remove(self._search_debounce_id)
+
+        self._search_debounce_id = GLib.timeout_add(250, self._apply_search, entry)
+
+    def _apply_search(self, entry: Gtk.SearchEntry) -> bool:
+        """Applica il filtro di ricerca (callback debounce)."""
+        self._search_debounce_id = 0
         self._search_text = entry.get_text().strip()
         self._refresh_entries()
+        return False  # Rimuovi il timeout
 
     def _on_section_changed(self, _section_id: int | None) -> None:
         """Callback dal pannello sezioni: aggiorna la lista voci."""
@@ -223,6 +241,26 @@ class SidebarPanel(Gtk.Window):
         """Callback eliminazione voce."""
         self._entry_repo.delete(entry_id)
         self._section_panel.refresh()
+        self._refresh_entries()
+
+    def _on_entry_move(self, entry_id: int, direction: int) -> None:
+        """Sposta una voce su (-1) o giù (+1) nell'ordinamento personale."""
+        entries = self._entry_list._entries
+        idx = next((i for i, e in enumerate(entries) if e.id == entry_id), None)
+        if idx is None:
+            return
+
+        swap_idx = idx + direction
+        if swap_idx < 0 or swap_idx >= len(entries):
+            return
+
+        # Scambia le posizioni personali
+        self._entry_repo.update_position(
+            entry_id=entries[idx].id, new_position=entries[swap_idx].personal_pos
+        )
+        self._entry_repo.update_position(
+            entry_id=entries[swap_idx].id, new_position=entries[idx].personal_pos
+        )
         self._refresh_entries()
 
     def _on_key_pressed(

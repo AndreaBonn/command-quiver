@@ -47,6 +47,12 @@ def setup_logging() -> None:
 
 def main() -> int:
     """Avvia l'applicazione Command Quiver."""
+    if "--version" in sys.argv or "-V" in sys.argv:
+        from command_quiver import __version__
+
+        print(f"{APP_NAME} {__version__}")
+        return 0
+
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("Avvio %s", APP_NAME)

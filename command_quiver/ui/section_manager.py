@@ -77,7 +77,11 @@ class SectionCreateDialog(Gtk.Window):
             self._error_label.set_visible(True)
             return
 
-        self._on_create(name)
+        error = self._on_create(name)
+        if error:
+            self._error_label.set_label(error)
+            self._error_label.set_visible(True)
+            return
         self.close()
 
 
@@ -145,7 +149,11 @@ class SectionRenameDialog(Gtk.Window):
             self._error_label.set_visible(True)
             return
         if new_name != self._section.name:
-            self._on_rename(self._section.id, new_name)
+            error = self._on_rename(self._section.id, new_name)
+            if error:
+                self._error_label.set_label(error)
+                self._error_label.set_visible(True)
+                return
         self.close()
 
 

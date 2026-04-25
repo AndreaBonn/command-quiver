@@ -186,3 +186,129 @@ class TestDatabaseConnection:
         cursor = db2.connection.execute("SELECT COUNT(*) FROM sections")
         assert cursor.fetchone()[0] == 4
         db2.close()
+
+
+class TestMigrationSystem:
+    """Test sistema di migrazioni incrementali."""
+
+    def test_user_version_set_after_initialize(self, db: Database) -> None:
+        version = db.connection.execute("PRAGMA user_version").fetchone()[0]
+        assert version >= 1
+
+    def test_migrations_idempotent(self, db: Database) -> None:
+        """Chiamare _migrate() più volte non causa errori."""
+        db._migrate()
+        db._migrate()
+        version = db.connection.execute("PRAGMA user_version").fetchone()[0]
+        assert version >= 1
+
+    def test_legacy_db_detected_and_migrated(self, tmp_path: Path) -> None:
+        """DB con is_default ma user_version=0 viene rilevato come v1."""
+        db_path = tmp_path / "legacy.db"
+        conn = sqlite3.connect(str(db_path))
+        # Crea schema con is_default (come il vecchio codice)
+        conn.executescript("""
+            CREATE TABLE sections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                icon TEXT DEFAULT 'folder',
+                position INTEGER NOT NULL DEFAULT 0,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                content TEXT NOT NULL,
+                section_id INTEGER REFERENCES sections(id) ON DELETE SET NULL,
+                type TEXT DEFAULT 'prompt' CHECK(type IN ('prompt', 'shell')),
+                tags TEXT DEFAULT '',
+                personal_pos INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.close()
+
+        db = Database(db_path=db_path)
+        db.initialize()
+
+        version = db.connection.execute("PRAGMA user_version").fetchone()[0]
+        assert version == 1
+        db.close()
+
+    def test_fresh_db_gets_latest_version(self, tmp_path: Path) -> None:
+        """DB nuovo ottiene versione massima delle migrazioni."""
+        db_path = tmp_path / "fresh.db"
+        db = Database(db_path=db_path)
+        db.initialize()
+
+        version = db.connection.execute("PRAGMA user_version").fetchone()[0]
+        assert version >= 1
+        db.close()
+
+
+class TestAutoBackup:
+    """Test backup automatico del database."""
+
+    def test_no_backup_before_threshold(self, tmp_path: Path) -> None:
+        """Nessun backup creato prima di N avvii."""
+        db_path = tmp_path / "vault.db"
+        db = Database(db_path=db_path)
+        db.initialize()
+        db.close()
+
+        backups = list(tmp_path.glob("vault.auto.bak.*"))
+        assert len(backups) == 0
+
+    def test_backup_created_at_threshold(self, tmp_path: Path) -> None:
+        """Backup creato ogni N avvii."""
+        db_path = tmp_path / "vault.db"
+        # Imposta contatore a N-1 per forzare backup al prossimo avvio
+        counter_file = tmp_path / ".backup_counter"
+        counter_file.write_text(str(Database._BACKUP_EVERY_N - 1))
+
+        db = Database(db_path=db_path)
+        db.initialize()
+        db.close()
+
+        backups = list(tmp_path.glob("vault.auto.bak.*"))
+        assert len(backups) == 1
+
+    def test_old_backups_cleaned_up(self, tmp_path: Path) -> None:
+        """Mantiene solo MAX_BACKUPS backup."""
+        db_path = tmp_path / "vault.db"
+
+        # Crea backup finti vecchi
+        for i in range(5):
+            fake = tmp_path / f"vault.auto.bak.2024010{i}T000000"
+            fake.write_text("fake")
+
+        counter_file = tmp_path / ".backup_counter"
+        counter_file.write_text(str(Database._BACKUP_EVERY_N - 1))
+
+        db = Database(db_path=db_path)
+        db.initialize()
+        db.close()
+
+        backups = list(tmp_path.glob("vault.auto.bak.*"))
+        assert len(backups) == Database._MAX_BACKUPS
+
+    def test_backup_is_valid_sqlite(self, tmp_path: Path) -> None:
+        """Il backup deve essere un DB SQLite valido."""
+        db_path = tmp_path / "vault.db"
+        counter_file = tmp_path / ".backup_counter"
+        counter_file.write_text(str(Database._BACKUP_EVERY_N - 1))
+
+        db = Database(db_path=db_path)
+        db.initialize()
+        db.close()
+
+        backups = list(tmp_path.glob("vault.auto.bak.*"))
+        assert len(backups) == 1
+
+        # Verifica che il backup sia leggibile
+        conn = sqlite3.connect(str(backups[0]))
+        count = conn.execute("SELECT COUNT(*) FROM sections").fetchone()[0]
+        assert count == 4
+        conn.close()

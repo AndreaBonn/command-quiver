@@ -46,6 +46,22 @@ INSERT OR IGNORE INTO sections (name, icon, position, is_default) VALUES
     ('Generale',       'folder',              3, 1);
 """
 
+# Migrazioni incrementali: (versione, descrizione, SQL)
+# Le migrazioni vengono applicate in ordine, solo se user_version < versione.
+# ATTENZIONE: MAI modificare migrazioni già rilasciate. Aggiungere sempre in coda.
+_MIGRATIONS: list[tuple[int, str, str]] = [
+    (
+        1,
+        "aggiunta colonna is_default a sections",
+        """
+        -- Verifica se la colonna esiste già (per DB pre-migration system)
+        -- SQLite non ha IF NOT EXISTS per ALTER TABLE, usiamo try/catch via executescript
+        ALTER TABLE sections ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;
+        UPDATE sections SET is_default = 1 WHERE name = 'Generale';
+        """,
+    ),
+]
+
 # Percorso predefinito del database
 DEFAULT_DB_DIR = Path.home() / ".local" / "share" / "command-quiver"
 DEFAULT_DB_PATH = DEFAULT_DB_DIR / "vault.db"
@@ -98,23 +114,55 @@ class Database:
             self._migrate()
             self.connection.executescript(_SEED_SQL)
             self.connection.commit()
+            self._auto_backup()
             logger.info("Schema database inizializzato")
         except sqlite3.Error:
             logger.exception("Errore inizializzazione schema, tentativo di ricreare")
             self._recreate()
 
     def _migrate(self) -> None:
-        """Applica migrazioni incrementali per DB pre-esistenti."""
-        # Migrazione: aggiunge is_default se mancante
+        """Applica migrazioni incrementali basate su PRAGMA user_version.
+
+        Ogni migrazione ha un numero versione. Il DB traccia la versione
+        corrente in user_version. Solo le migrazioni con versione superiore
+        vengono eseguite.
+        """
+        current = self.connection.execute("PRAGMA user_version").fetchone()[0]
+
+        # DB pre-migration system: rileva versione reale dalla struttura
+        if current == 0:
+            current = self._detect_schema_version()
+
+        for version, description, sql in _MIGRATIONS:
+            if current < version:
+                logger.info("Migrazione v%d: %s", version, description)
+                try:
+                    self.connection.executescript(sql)
+                except sqlite3.OperationalError as err:
+                    # ALTER TABLE fallisce se colonna già esiste (DB pre-migration)
+                    if "duplicate column" in str(err).lower():
+                        logger.info("Migrazione v%d già applicata (colonna esistente)", version)
+                    else:
+                        raise
+                self.connection.execute(f"PRAGMA user_version = {version}")
+                self.connection.commit()
+
+        final = self.connection.execute("PRAGMA user_version").fetchone()[0]
+        if final > current:
+            logger.info("Schema migrato da v%d a v%d", current, final)
+
+    def _detect_schema_version(self) -> int:
+        """Rileva la versione dello schema per DB senza user_version (legacy)."""
         columns = [
             row[1] for row in self.connection.execute("PRAGMA table_info(sections)").fetchall()
         ]
-        if "is_default" not in columns:
-            self.connection.execute(
-                "ALTER TABLE sections ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0"
-            )
-            self.connection.execute("UPDATE sections SET is_default = 1 WHERE name = 'Generale'")
-            logger.info("Migrazione: aggiunta colonna is_default a sections")
+        if "is_default" in columns:
+            # Ha già la migrazione v1 applicata manualmente
+            self.connection.execute("PRAGMA user_version = 1")
+            self.connection.commit()
+            logger.info("DB legacy rilevato con schema v1, user_version aggiornato")
+            return 1
+        return 0
 
     def _recreate(self) -> None:
         """Ricrea il database da zero in caso di corruzione."""
@@ -133,6 +181,59 @@ class Database:
         except sqlite3.Error:
             logger.critical("Impossibile ricreare il database: %s", self._db_path)
             raise
+
+    # Backup ogni N avvii (evita accumulazione backup)
+    _BACKUP_EVERY_N = 5
+    _BACKUP_SUFFIX = ".auto.bak"
+    _MAX_BACKUPS = 3
+
+    def _auto_backup(self) -> None:
+        """Crea un backup automatico del DB ogni N avvii, mantenendo max 3 copie."""
+        if not self._db_path.exists():
+            return
+
+        backup_dir = self._db_path.parent
+        counter_file = backup_dir / ".backup_counter"
+
+        # Leggi e incrementa contatore
+        count = 0
+        if counter_file.exists():
+            try:
+                count = int(counter_file.read_text().strip())
+            except (ValueError, OSError):
+                count = 0
+
+        count += 1
+        try:
+            counter_file.write_text(str(count))
+        except OSError:
+            logger.warning("Impossibile aggiornare contatore backup")
+            return
+
+        if count % self._BACKUP_EVERY_N != 0:
+            return
+
+        # Crea backup via SQLite online backup API
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        backup_path = backup_dir / f"vault{self._BACKUP_SUFFIX}.{timestamp}"
+
+        try:
+            backup_conn = sqlite3.connect(str(backup_path))
+            self.connection.backup(backup_conn)
+            backup_conn.close()
+            logger.info("Backup automatico creato: %s", backup_path.name)
+        except sqlite3.Error:
+            logger.exception("Errore durante backup automatico")
+            return
+
+        # Pulizia vecchi backup (mantieni solo gli ultimi N)
+        backups = sorted(backup_dir.glob(f"vault{self._BACKUP_SUFFIX}.*"), reverse=True)
+        for old_backup in backups[self._MAX_BACKUPS :]:
+            try:
+                old_backup.unlink()
+                logger.debug("Backup obsoleto rimosso: %s", old_backup.name)
+            except OSError:
+                pass
 
     def close(self) -> None:
         """Chiude la connessione al database."""

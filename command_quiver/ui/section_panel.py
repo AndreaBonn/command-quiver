@@ -9,7 +9,12 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk
 
 from command_quiver.core.i18n import t
-from command_quiver.db.queries import EntryRepository, Section, SectionRepository
+from command_quiver.db.queries import (
+    DuplicateSectionError,
+    EntryRepository,
+    Section,
+    SectionRepository,
+)
 from command_quiver.ui.section_manager import (
     SectionCreateDialog,
     SectionRenameDialog,
@@ -187,10 +192,14 @@ class SectionPanelWidget(Gtk.Box):
         )
         dialog.present()
 
-    def _on_section_created(self, name: str) -> None:
-        """Callback creazione sezione."""
-        self._section_repo.create(name)
+    def _on_section_created(self, name: str) -> str | None:
+        """Callback creazione sezione. Restituisce messaggio errore o None."""
+        try:
+            self._section_repo.create(name)
+        except DuplicateSectionError:
+            return t("section.error_name_duplicate", name=name)
         self.refresh()
+        return None
 
     def _on_right_click(
         self,
@@ -244,10 +253,14 @@ class SectionPanelWidget(Gtk.Box):
             on_confirm=self._on_section_deleted,
         )
 
-    def _on_section_renamed(self, section_id: int, new_name: str) -> None:
-        """Callback rinomina sezione."""
-        self._section_repo.rename(section_id, new_name)
+    def _on_section_renamed(self, section_id: int, new_name: str) -> str | None:
+        """Callback rinomina sezione. Restituisce messaggio errore o None."""
+        try:
+            self._section_repo.rename(section_id, new_name)
+        except DuplicateSectionError:
+            return t("section.error_name_duplicate", name=new_name)
         self.refresh()
+        return None
 
     def _on_section_deleted(self, section_id: int) -> None:
         """Callback eliminazione sezione."""
