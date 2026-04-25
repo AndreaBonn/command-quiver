@@ -40,6 +40,7 @@ Command Quiver is a local desktop application with no network-facing components.
 - The SQLite database (`vault.db`) is stored unencrypted in `~/.local/share/command-quiver/`. If you store sensitive information in entries, protect this directory with appropriate file permissions.
 - Shell commands are executed as-is in gnome-terminal. Review commands before execution, especially if imported from external sources.
 - Log files in `~/.local/share/command-quiver/logs/` may contain entry names. Restrict access if entry names are sensitive.
+- The D-Bus interface (`com.github.commandquiver.App`) is registered on the session bus without sender verification. Any process running under the same user session can invoke methods such as Toggle, NewEntry, ChangeLanguage, and Quit. This is standard for desktop applications but means a compromised local process could control the application.
 
 ## Out of Scope
 
