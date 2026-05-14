@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Generate Italian changelog
         uses: AndreaBonn/ai-changelog-generator@v1
