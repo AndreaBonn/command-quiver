@@ -1,3 +1,7 @@
+<!-- LANG_NAV -->
+> **Lingua / Language:** Italiano | [English](CHANGELOG_EN.md)
+<!-- /LANG_NAV -->
+
 ## What's Changed in v1.1.0
 
 > Aggiunta la sincronizzazione tra dispositivi tramite repository privato GitHub.

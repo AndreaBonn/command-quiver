@@ -1,3 +1,7 @@
+<!-- LANG_NAV -->
+> **Lingua / Language:** [Italiano](CHANGELOG_IT.md) | English
+<!-- /LANG_NAV -->
+
 ## What's Changed in v1.1.0
 
 > AndreaBonn/command-quiver now supports cross-device sync via GitHub private repo.
