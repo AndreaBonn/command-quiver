@@ -42,8 +42,46 @@ sed "s|^Exec=.*|Exec=$VENV_BIN|" \
     > "$DESKTOP_DIR/com.github.commandquiver.desktop"
 echo "Desktop file installato: $DESKTOP_DIR/com.github.commandquiver.desktop"
 
+# Crea index.theme se mancante (necessario per gtk-update-icon-cache)
+HICOLOR_DIR="$HOME/.local/share/icons/hicolor"
+if [ ! -f "$HICOLOR_DIR/index.theme" ]; then
+    cat > "$HICOLOR_DIR/index.theme" << 'THEME_EOF'
+[Icon Theme]
+Name=Hicolor
+Comment=Fallback Icon Theme
+Hidden=true
+Directories=32x32/apps,48x48/apps,64x64/apps,128x128/apps,scalable/apps
+
+[32x32/apps]
+Size=32
+Context=Applications
+Type=Fixed
+
+[48x48/apps]
+Size=48
+Context=Applications
+Type=Fixed
+
+[64x64/apps]
+Size=64
+Context=Applications
+Type=Fixed
+
+[128x128/apps]
+Size=128
+Context=Applications
+Type=Fixed
+
+[scalable/apps]
+Size=64
+MinSize=16
+MaxSize=512
+Context=Applications
+Type=Scalable
+THEME_EOF
+fi
 # Aggiorna cache
 update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
-gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+gtk-update-icon-cache -f -t "$HICOLOR_DIR" 2>/dev/null || true
 
 echo "Installazione completata. L'app dovrebbe apparire nel menu GNOME."
