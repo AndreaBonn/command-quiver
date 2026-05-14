@@ -9,14 +9,67 @@ permissions:
 
 jobs:
   changelog:
-    name: AI Changelog Generator
+    name: AI Changelog (IT + EN)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: AndreaBonn/ai-changelog-generator@v1
+
+      - name: Generate Italian changelog
+        uses: AndreaBonn/ai-changelog-generator@v1
         with:
           github_token: '${{ secrets.GITHUB_TOKEN }}'
           llm_provider: 'groq,gemini,openai'
           llm_api_key: '${{ secrets.GROQ_API_KEY }},${{ secrets.GEMINI_API_KEY }},${{ secrets.OPENAI_API_KEY }}'
           language: 'italian'
           update_changelog_file: 'true'
+          changelog_file_path: 'CHANGELOG_IT.md'
+
+      - name: Generate English changelog
+        uses: AndreaBonn/ai-changelog-generator@v1
+        with:
+          github_token: '${{ secrets.GITHUB_TOKEN }}'
+          llm_provider: 'groq,gemini,openai'
+          llm_api_key: '${{ secrets.GROQ_API_KEY }},${{ secrets.GEMINI_API_KEY }},${{ secrets.OPENAI_API_KEY }}'
+          language: 'english'
+          update_changelog_file: 'true'
+          changelog_file_path: 'CHANGELOG_EN.md'
+
+      - name: Add language navigation banners
+        run: |
+          add_banner() {
+            local file="$1"
+            local banner="$2"
+
+            if [ ! -f "$file" ]; then
+              return
+            fi
+
+            # Rimuovi banner precedente se esiste
+            sed -i '/^<!-- LANG_NAV -->/,/^<!-- \/LANG_NAV -->/d' "$file"
+
+            # Prependi nuovo banner
+            local tmp
+            tmp=$(mktemp)
+            {
+              echo '<!-- LANG_NAV -->'
+              echo "$banner"
+              echo '<!-- /LANG_NAV -->'
+              echo ''
+              cat "$file"
+            } > "$tmp"
+            mv "$tmp" "$file"
+          }
+
+          add_banner "CHANGELOG_IT.md" \
+            "> **Lingua / Language:** Italiano | [English](CHANGELOG_EN.md)"
+
+          add_banner "CHANGELOG_EN.md" \
+            "> **Lingua / Language:** [Italiano](CHANGELOG_IT.md) | English"
+
+      - name: Commit navigation banners
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG_IT.md CHANGELOG_EN.md
+          git diff --staged --quiet || git commit -m "docs(changelog): add language navigation"
+          git push
