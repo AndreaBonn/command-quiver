@@ -19,6 +19,38 @@ Libreria personale di prompt AI e comandi shell, accessibile dalla system tray d
 
 Command Quiver by Bonn vive nella system tray di GNOME e offre accesso rapido a prompt AI e comandi shell usati di frequente. Le voci sono salvate in un database SQLite locale, organizzate in sezioni e ricercabili per nome. I prompt vengono copiati negli appunti; i comandi shell possono essere eseguiti direttamente in gnome-terminal.
 
+## Architettura
+
+```mermaid
+graph LR
+  subgraph main_proc["Processo principale - GTK4"]
+    direction TB
+    app["CommandQuiverApp"]
+    sidebar["SidebarPanel"]
+    sync_eng["SyncEngine"]
+    db[("SQLite vault.db")]
+    settings["Impostazioni JSON"]
+  end
+
+  subgraph tray_proc["Processo separato - GTK3"]
+    tray["tray_helper.py<br/>AyatanaAppIndicator3"]
+  end
+
+  github["Repo privato GitHub"]
+
+  tray -->|"D-Bus: Toggle, NewEntry,<br/>ChangeLanguage, Quit"| app
+  app -->|"Health check 10s<br/>+ auto-restart"| tray
+  app --> sidebar
+  sidebar -->|"CRUD"| db
+  sidebar -->|"Dati modificati"| app
+  app -->|"Debounce 30s"| sync_eng
+  sync_eng -->|"Lettura/Scrittura"| db
+  sync_eng -->|"Contents API<br/>urllib"| github
+  app -->|"Carica/Salva"| settings
+```
+
+> Per diagrammi tecnici dettagliati (schema database, macchine a stati, gerarchia componenti UI), vedi [docs/ARCHITECTURE.it.md](docs/ARCHITECTURE.it.md).
+
 ## Funzionalità
 
 - Icona nella system tray con menu contestuale (mostra/nascondi, nuova voce, esci)
@@ -42,6 +74,49 @@ Command Quiver permette di sincronizzare voci e sezioni tra piu computer usando 
 - Alla chiusura, viene eseguita una sincronizzazione finale
 - I conflitti si risolvono automaticamente: vince la modifica piu recente
 - Le cancellazioni si propagano a tutti i dispositivi
+
+### Flusso di sincronizzazione
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant ui as SidebarPanel
+  participant app as App
+  participant engine as SyncEngine
+  participant db as SQLite
+  participant gh as API GitHub
+
+  ui->>app: Operazione CRUD
+  app->>app: Timer debounce 30s
+
+  Note over app: Timer scaduto
+
+  app->>engine: Avvia thread background
+  activate engine
+  engine->>db: Esporta stato locale
+  db-->>engine: Sezioni + Voci + Tombstone
+
+  engine->>gh: GET file remoto
+  gh-->>engine: Stato remoto + SHA
+
+  engine->>db: Applica modifiche remote
+  Note over engine,db: Crea/aggiorna voci dal remoto
+
+  engine->>db: Ri-esporta stato locale
+  db-->>engine: Stato locale aggiornato
+
+  engine->>engine: Merge last-write-wins per UUID
+
+  engine->>gh: PUT stato unificato con SHA
+  gh-->>engine: Nuovo SHA
+
+  engine->>db: Pulizia tombstone oltre 90gg
+
+  deactivate engine
+  engine-->>app: Callback GLib.idle_add
+
+  app->>ui: Aggiorna se voci scaricate
+```
 
 ### Configurazione
 

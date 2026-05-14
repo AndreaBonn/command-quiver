@@ -19,6 +19,38 @@ A personal library of AI prompts and shell commands, accessible from the GNOME s
 
 Command Quiver by Bonn lives in your GNOME system tray and gives you quick access to frequently used AI prompts and shell commands. Entries are stored in a local SQLite database, organized into sections, and searchable by name. Prompts are copied to the clipboard; shell commands can be executed directly in gnome-terminal.
 
+## Architecture
+
+```mermaid
+graph LR
+  subgraph main_proc["Main Process - GTK4"]
+    direction TB
+    app["CommandQuiverApp"]
+    sidebar["SidebarPanel"]
+    sync_eng["SyncEngine"]
+    db[("SQLite vault.db")]
+    settings["Settings JSON"]
+  end
+
+  subgraph tray_proc["Separate Process - GTK3"]
+    tray["tray_helper.py<br/>AyatanaAppIndicator3"]
+  end
+
+  github["GitHub Private Repo"]
+
+  tray -->|"D-Bus: Toggle, NewEntry,<br/>ChangeLanguage, Quit"| app
+  app -->|"Health check 10s<br/>+ auto-restart"| tray
+  app --> sidebar
+  sidebar -->|"CRUD"| db
+  sidebar -->|"Data changed"| app
+  app -->|"Debounce 30s"| sync_eng
+  sync_eng -->|"Read/Write"| db
+  sync_eng -->|"Contents API<br/>urllib"| github
+  app -->|"Load/Save"| settings
+```
+
+> For detailed technical diagrams (database schema, state machines, UI component tree), see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Features
 
 - System tray icon with context menu (show/hide, new entry, quit)
@@ -42,6 +74,49 @@ Command Quiver can sync your entries and sections across multiple computers usin
 - On shutdown, a final sync is performed
 - Conflicts are resolved automatically: the most recent edit wins
 - Deletions propagate to all devices
+
+### Sync flow
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant ui as SidebarPanel
+  participant app as App
+  participant engine as SyncEngine
+  participant db as SQLite
+  participant gh as GitHub API
+
+  ui->>app: CRUD operation
+  app->>app: Debounce timer 30s
+
+  Note over app: Timer fires
+
+  app->>engine: Start background thread
+  activate engine
+  engine->>db: Export local state
+  db-->>engine: Sections + Entries + Tombstones
+
+  engine->>gh: GET remote file
+  gh-->>engine: Remote state + SHA
+
+  engine->>db: Apply remote changes
+  Note over engine,db: Create/update entries from remote
+
+  engine->>db: Re-export local state
+  db-->>engine: Updated local state
+
+  engine->>engine: Merge last-write-wins by UUID
+
+  engine->>gh: PUT merged state with SHA
+  gh-->>engine: New SHA
+
+  engine->>db: Cleanup tombstones older than 90d
+
+  deactivate engine
+  engine-->>app: GLib.idle_add callback
+
+  app->>ui: Refresh if entries pulled
+```
 
 ### Setup
 
