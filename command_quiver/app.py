@@ -128,7 +128,13 @@ class CommandQuiverApp(Gtk.Application):
             return
 
         def _sync_thread() -> None:
-            result = self._sync_engine.sync()
+            try:
+                result = self._sync_engine.sync()
+            except Exception:
+                logger.exception("Eccezione non gestita nel thread sync")
+                from command_quiver.core.sync_engine import SyncResult
+
+                result = SyncResult(success=False, message="Errore interno sync")
             GLib.idle_add(self._on_sync_complete, result)
 
         thread = threading.Thread(target=_sync_thread, daemon=True)

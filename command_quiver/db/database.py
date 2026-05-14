@@ -35,6 +35,12 @@ CREATE INDEX IF NOT EXISTS idx_entries_section_id ON entries(section_id);
 CREATE INDEX IF NOT EXISTS idx_entries_name ON entries(name);
 CREATE INDEX IF NOT EXISTS idx_entries_type ON entries(type);
 CREATE INDEX IF NOT EXISTS idx_sections_position ON sections(position);
+
+CREATE TABLE IF NOT EXISTS sync_tombstones (
+    uuid        TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL CHECK(entity_type IN ('entry', 'section')),
+    deleted_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 # Sezioni di default inserite al primo avvio
