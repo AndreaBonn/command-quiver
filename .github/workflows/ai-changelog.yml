@@ -34,6 +34,9 @@ jobs:
           update_changelog_file: 'true'
           changelog_file_path: 'CHANGELOG_EN.md'
 
+      - name: Pull changelog commits from action
+        run: git pull --rebase origin main
+
       - name: Add language navigation banners
         run: |
           add_banner() {
