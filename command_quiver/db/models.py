@@ -21,6 +21,8 @@ class Section:
     position: int = 0
     is_default: int = 0
     created_at: str = ""
+    uuid: str = ""
+    updated_at: str = ""
     entry_count: int = 0  # Calcolato via query, non persistito
 
 
@@ -37,6 +39,7 @@ class Entry:
     personal_pos: int = 0
     created_at: str = ""
     updated_at: str = ""
+    uuid: str = ""
     section_name: str = ""  # Calcolato via JOIN, non persistito
 
 

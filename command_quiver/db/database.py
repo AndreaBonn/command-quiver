@@ -60,7 +60,32 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         UPDATE sections SET is_default = 1 WHERE name = 'Generale';
         """,
     ),
+    (
+        2,
+        "aggiunta uuid e sync support",
+        # Placeholder: migrazione v2 gestita da _migrate_v2() con ALTER singoli
+        "",
+    ),
 ]
+
+
+# Migrazione v2 con ALTER TABLE singoli (SQLite non supporta IF NOT EXISTS su ALTER)
+_V2_ALTER_STATEMENTS = [
+    "ALTER TABLE entries ADD COLUMN uuid TEXT",
+    "ALTER TABLE sections ADD COLUMN uuid TEXT",
+    "ALTER TABLE sections ADD COLUMN updated_at DATETIME",
+]
+
+_V2_CREATE_STATEMENTS = """
+CREATE TABLE IF NOT EXISTS sync_tombstones (
+    uuid        TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL CHECK(entity_type IN ('entry', 'section')),
+    deleted_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_uuid ON entries(uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sections_uuid ON sections(uuid);
+"""
 
 # Percorso predefinito del database
 DEFAULT_DB_DIR = Path.home() / ".local" / "share" / "command-quiver"
@@ -112,6 +137,7 @@ class Database:
         try:
             self.connection.executescript(_SCHEMA_SQL)
             self._migrate()
+            self._populate_uuids()
             self.connection.executescript(_SEED_SQL)
             self.connection.commit()
             self._auto_backup()
@@ -136,14 +162,22 @@ class Database:
         for version, description, sql in _MIGRATIONS:
             if current < version:
                 logger.info("Migrazione v%d: %s", version, description)
-                try:
-                    self.connection.executescript(sql)
-                except sqlite3.OperationalError as err:
-                    # ALTER TABLE fallisce se colonna già esiste (DB pre-migration)
-                    if "duplicate column" in str(err).lower():
-                        logger.info("Migrazione v%d già applicata (colonna esistente)", version)
-                    else:
-                        raise
+
+                if version == 2:
+                    # v2: ALTER singoli per evitare che un fallimento blocchi i successivi
+                    self._migrate_v2()
+                elif sql:
+                    try:
+                        self.connection.executescript(sql)
+                    except sqlite3.OperationalError as err:
+                        if "duplicate column" in str(err).lower():
+                            logger.info(
+                                "Migrazione v%d già applicata (colonna esistente)",
+                                version,
+                            )
+                        else:
+                            raise
+
                 # PRAGMA non supporta parametri bindati — version è sempre int da _MIGRATIONS
                 self.connection.execute(f"PRAGMA user_version = {version}")
                 self.connection.commit()
@@ -151,6 +185,48 @@ class Database:
         final = self.connection.execute("PRAGMA user_version").fetchone()[0]
         if final > current:
             logger.info("Schema migrato da v%d a v%d", current, final)
+
+    def _migrate_v2(self) -> None:
+        """Migrazione v2: ogni ALTER TABLE isolato per non bloccare i successivi."""
+        for stmt in _V2_ALTER_STATEMENTS:
+            try:
+                self.connection.execute(stmt)
+            except sqlite3.OperationalError as err:
+                if "duplicate column" in str(err).lower():
+                    logger.info("v2: colonna già esistente, skip: %s", stmt)
+                else:
+                    raise
+        self.connection.executescript(_V2_CREATE_STATEMENTS)
+        self.connection.commit()
+        logger.info("Migrazione v2 completata")
+
+    def _populate_uuids(self) -> None:
+        """Genera UUID per righe esistenti prive di uuid (post-migrazione v2).
+
+        Operazione idempotente: se tutte le righe hanno uuid, non fa nulla.
+        """
+        import uuid as uuid_mod
+
+        # Verifica che la colonna uuid esista prima di operare
+        columns = [
+            row[1] for row in self.connection.execute("PRAGMA table_info(entries)").fetchall()
+        ]
+        if "uuid" not in columns:
+            return
+
+        updated = 0
+        for table in ("entries", "sections"):
+            cursor = self.connection.execute(f"SELECT id FROM {table} WHERE uuid IS NULL")
+            for row in cursor.fetchall():
+                self.connection.execute(
+                    f"UPDATE {table} SET uuid = ? WHERE id = ?",
+                    (str(uuid_mod.uuid4()), row["id"]),
+                )
+                updated += 1
+
+        if updated:
+            self.connection.commit()
+            logger.info("UUID generati per %d righe esistenti", updated)
 
     def _detect_schema_version(self) -> int:
         """Rileva la versione dello schema per DB senza user_version (legacy)."""

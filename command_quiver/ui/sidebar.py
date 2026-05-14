@@ -1,6 +1,7 @@
 """Pannello laterale principale con ricerca, sezioni e lista voci."""
 
 import logging
+from collections.abc import Callable
 
 import gi
 
@@ -29,7 +30,7 @@ class SidebarPanel(Gtk.Window):
     """Pannello laterale principale dell'applicazione.
 
     Contiene: barra di ricerca, pannello sezioni, lista voci,
-    barra inferiore con azioni.
+    barra inferiore con azioni e stato sync.
     """
 
     _SORT_VALUES = [
@@ -44,6 +45,8 @@ class SidebarPanel(Gtk.Window):
         self,
         db: Database,
         settings: Settings,
+        on_data_changed: Callable[[], None] | None = None,
+        on_sync_toggled: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(
             title="Command Quiver by Bonn",
@@ -58,6 +61,8 @@ class SidebarPanel(Gtk.Window):
         self._entry_repo = EntryRepository(db.connection)
         self._search_text = ""
         self._search_debounce_id: int = 0
+        self._on_data_changed = on_data_changed
+        self._on_sync_toggled_cb = on_sync_toggled
 
         load_app_css()
         self._build_ui()
@@ -159,7 +164,26 @@ class SidebarPanel(Gtk.Window):
         new_btn.set_hexpand(True)
         bottom_bar.append(new_btn)
 
+        # Bottone sync (icona ingranaggio)
+        sync_btn = Gtk.Button(icon_name="emblem-synchronizing-symbolic")
+        sync_btn.set_tooltip_text(t("sync.title"))
+        sync_btn.connect("clicked", self._on_sync_clicked)
+        bottom_bar.append(sync_btn)
+
         main_box.append(bottom_bar)
+
+        # --- Status bar sync ---
+        self._sync_status_label = Gtk.Label(xalign=0)
+        self._sync_status_label.add_css_class("dim-label")
+        self._sync_status_label.set_margin_start(8)
+        self._sync_status_label.set_margin_bottom(4)
+
+        if self._settings.sync.enabled:
+            self._sync_status_label.set_label(t("sync.status_ok"))
+        else:
+            self._sync_status_label.set_label(t("sync.status_disabled"))
+
+        main_box.append(self._sync_status_label)
 
     # --- Refresh dati ---
 
@@ -173,6 +197,30 @@ class SidebarPanel(Gtk.Window):
             sort_order=sort_order,
         )
         self._entry_list.update_entries(entries, show_move=(sort_order == "personal"))
+
+    def refresh_all(self) -> None:
+        """Refresh completo dopo sync (API pubblica per app.py)."""
+        self._section_panel.refresh()
+        self._refresh_entries()
+
+    def update_sync_status(self, result) -> None:
+        """Aggiorna la label di stato sync (API pubblica per app.py)."""
+        if result.success:
+            if result.entries_pulled > 0 or result.sections_pulled > 0:
+                self._sync_status_label.set_label(
+                    t("sync.result", pulled=result.entries_pulled, pushed=0),
+                )
+            else:
+                self._sync_status_label.set_label(t("sync.status_ok"))
+            self._sync_status_label.remove_css_class("error")
+        else:
+            self._sync_status_label.set_label(t("sync.status_error"))
+            self._sync_status_label.add_css_class("error")
+
+    def _notify_data_changed(self) -> None:
+        """Notifica l'app che i dati sono cambiati (per trigger sync debounced)."""
+        if self._on_data_changed:
+            self._on_data_changed()
 
     # --- Handler eventi ---
 
@@ -236,12 +284,14 @@ class SidebarPanel(Gtk.Window):
             self._entry_repo.create(data)
         self._section_panel.refresh()
         self._refresh_entries()
+        self._notify_data_changed()
 
     def _on_entry_deleted(self, entry_id: int) -> None:
         """Callback eliminazione voce."""
         self._entry_repo.delete(entry_id)
         self._section_panel.refresh()
         self._refresh_entries()
+        self._notify_data_changed()
 
     def _on_entry_move(self, entry_id: int, direction: int) -> None:
         """Sposta una voce su (-1) o giù (+1) nell'ordinamento personale."""
@@ -262,6 +312,27 @@ class SidebarPanel(Gtk.Window):
             entry_id=entries[swap_idx].id, new_position=entries[idx].personal_pos
         )
         self._refresh_entries()
+
+    def _on_sync_clicked(self, _button: Gtk.Button) -> None:
+        """Apre il dialog di configurazione sync."""
+        from command_quiver.ui.sync_dialog import SyncSetupDialog
+
+        dialog = SyncSetupDialog(
+            parent=self,
+            settings=self._settings,
+            on_sync_toggled=self._on_sync_toggled,
+        )
+        dialog.present()
+
+    def _on_sync_toggled(self) -> None:
+        """Callback quando sync viene attivato/disattivato."""
+        if self._settings.sync.enabled:
+            self._sync_status_label.set_label(t("sync.status_ok"))
+        else:
+            self._sync_status_label.set_label(t("sync.status_disabled"))
+        # Notifica app.py per reinizializzare SyncEngine
+        if self._on_sync_toggled_cb:
+            self._on_sync_toggled_cb()
 
     def _on_key_pressed(
         self,

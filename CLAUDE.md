@@ -20,16 +20,19 @@ command_quiver/
 │   ├── database.py  # SQLite, schema, migration system (PRAGMA user_version), auto-backup
 │   └── queries.py   # Repository CRUD, export/import JSON, paginazione
 ├── core/
-│   ├── clipboard.py # Copia negli appunti via GDK4
-│   ├── executor.py  # Esecuzione comandi in gnome-terminal (shlex.quote)
-│   ├── i18n.py      # Internazionalizzazione it/en
-│   └── settings.py  # Config JSON persistente
+│   ├── clipboard.py      # Copia negli appunti via GDK4
+│   ├── executor.py       # Esecuzione comandi in gnome-terminal (shlex.quote)
+│   ├── github_client.py  # Client GitHub Contents API (solo stdlib urllib)
+│   ├── i18n.py           # Internazionalizzazione it/en
+│   ├── settings.py       # Config JSON persistente + SyncSettings + token management
+│   └── sync_engine.py    # Sync engine: export, merge (last-write-wins), push/pull
 ├── ui/
 │   ├── sidebar.py        # Pannello laterale (debounce search, sort personale)
 │   ├── entry_list.py     # Lista voci con ordinamento e move up/down
 │   ├── entry_editor.py   # Dialog creazione/modifica
 │   ├── section_panel.py  # Pannello sezioni con CRUD
 │   ├── section_manager.py # Dialog gestione sezioni (validazione duplicati)
+│   ├── sync_dialog.py    # Dialog configurazione sync GitHub
 │   └── styles.py         # CSS theme-aware (@success_color, @accent_color)
 └── assets/
     └── icon.png     # Icona tray 32x32
@@ -42,8 +45,18 @@ command_quiver/
 - Logging con RotatingFileHandler (~/.local/share/command-quiver/logs/)
 - DB path: ~/.local/share/command-quiver/vault.db
 - Config path: ~/.config/command-quiver/settings.json
+- Sync token path: ~/.config/command-quiver/.sync_token (600 perms)
 - Single instance: GtkApplication + D-Bus (FLAGS_NONE)
 - Backup auto DB: ogni 5 avvii, max 3 copie
+
+## Sync cross-device (GitHub)
+
+Sincronizzazione via GitHub private repo (Contents API, solo stdlib urllib).
+- UUID su ogni entry/section per identita cross-device
+- Merge strategy: last-write-wins basato su updated_at
+- Tombstones per propagare cancellazioni (cleanup 90gg)
+- Sync: all'avvio (pull+merge), debounced 30s dopo CRUD, alla chiusura
+- Token GitHub in file separato con permessi 600
 
 ## Architettura tray icon
 

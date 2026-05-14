@@ -5,12 +5,13 @@ processo separato (tray_helper.py) che usa GTK3 + AyatanaAppIndicator3,
 perché GTK3 e GTK4 non possono coesistere nello stesso processo.
 
 La comunicazione avviene via D-Bus:
-- tray_helper → app: Toggle, NewEntry, ChangeLanguage, Quit
+- tray_helper -> app: Toggle, NewEntry, ChangeLanguage, Quit
 """
 
 import logging
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import gi
@@ -41,6 +42,9 @@ _APP_DBUS_XML = """
 </node>
 """
 
+# Debounce sync: secondi di attesa dopo l'ultima modifica prima di pushare
+_SYNC_DEBOUNCE_SECONDS = 30
+
 
 class CommandQuiverApp(Gtk.Application):
     """Applicazione principale Command Quiver.
@@ -62,6 +66,8 @@ class CommandQuiverApp(Gtk.Application):
         self._tray_health_source: int = 0
         self._tray_stderr_file = None
         self._dbus_reg_id = 0
+        self._sync_engine = None
+        self._sync_debounce_id: int = 0
 
     def do_startup(self) -> None:
         """Inizializzazione al primo avvio (database, impostazioni, tray)."""
@@ -90,7 +96,7 @@ class CommandQuiverApp(Gtk.Application):
         logger.info("Command Quiver avviato")
 
     def _init_services(self) -> None:
-        """Inizializza database, impostazioni, i18n, D-Bus e tray."""
+        """Inizializza database, impostazioni, i18n, D-Bus, tray e sync."""
         self._db = Database()
         self._db.initialize()
 
@@ -102,6 +108,81 @@ class CommandQuiverApp(Gtk.Application):
 
         self._register_dbus_interface()
         self._start_tray_helper()
+        self._init_sync()
+
+    def _init_sync(self) -> None:
+        """Inizializza il sync engine e avvia sync all'avvio se abilitato."""
+        if not self._settings.sync.enabled:
+            return
+
+        from command_quiver.core.sync_engine import SyncEngine
+
+        self._sync_engine = SyncEngine(db=self._db, settings=self._settings)
+
+        # Sync all'avvio in background (non blocca la UI)
+        self._run_sync_background()
+
+    def _run_sync_background(self) -> None:
+        """Esegue sync in un thread separato per non bloccare la UI GTK."""
+        if self._sync_engine is None:
+            return
+
+        def _sync_thread() -> None:
+            result = self._sync_engine.sync()
+            GLib.idle_add(self._on_sync_complete, result)
+
+        thread = threading.Thread(target=_sync_thread, daemon=True)
+        thread.start()
+
+    def _on_sync_complete(self, result) -> bool:
+        """Callback sync completato (eseguita sul main thread GTK)."""
+        if result.success:
+            logger.info("Sync completato: %s", result.message)
+            # Refresh sidebar se visibile e se ci sono cambiamenti dal remoto
+            if (
+                result.entries_pulled > 0 or result.sections_pulled > 0
+            ) and self._sidebar is not None:
+                self._sidebar.refresh_all()
+        else:
+            logger.warning("Sync fallito: %s", result.message)
+
+        # Aggiorna status nella sidebar
+        if self._sidebar is not None:
+            self._sidebar.update_sync_status(result)
+
+        return False  # Rimuovi da idle
+
+    def _on_sync_toggled(self) -> None:
+        """Reinizializza SyncEngine quando sync viene attivato/disattivato dal dialog."""
+        if self._settings.sync.enabled:
+            from command_quiver.core.sync_engine import SyncEngine
+
+            self._sync_engine = SyncEngine(db=self._db, settings=self._settings)
+            self._run_sync_background()
+            logger.info("Sync attivato, primo sync avviato")
+        else:
+            self._sync_engine = None
+            logger.info("Sync disattivato")
+
+    def on_data_changed(self) -> None:
+        """Callback invocato dalla sidebar dopo ogni CRUD. Debounce sync push."""
+        if self._sync_engine is None:
+            return
+
+        # Reset debounce timer
+        if self._sync_debounce_id:
+            GLib.source_remove(self._sync_debounce_id)
+
+        self._sync_debounce_id = GLib.timeout_add_seconds(
+            _SYNC_DEBOUNCE_SECONDS,
+            self._on_sync_debounce_fire,
+        )
+
+    def _on_sync_debounce_fire(self) -> bool:
+        """Timer debounce scaduto: esegui sync push."""
+        self._sync_debounce_id = 0
+        self._run_sync_background()
+        return False  # Non ripetere
 
     def _show_error_dialog(self, message: str) -> None:
         """Mostra un dialog di errore fatale all'utente."""
@@ -112,10 +193,20 @@ class CommandQuiverApp(Gtk.Application):
 
     def do_activate(self) -> None:
         """Attivazione: mostra/crea la sidebar."""
-        if self._sidebar is None:
-            self._sidebar = SidebarPanel(db=self._db, settings=self._settings)
-            self.add_window(self._sidebar)
-        self._sidebar.present()
+        logger.info("do_activate chiamato, sidebar=%s", self._sidebar)
+        try:
+            if self._sidebar is None:
+                self._sidebar = SidebarPanel(
+                    db=self._db,
+                    settings=self._settings,
+                    on_data_changed=self.on_data_changed,
+                    on_sync_toggled=self._on_sync_toggled,
+                )
+                self.add_window(self._sidebar)
+            self._sidebar.present()
+            logger.info("Sidebar presentata")
+        except Exception:
+            logger.exception("Errore in do_activate")
 
     # --- D-Bus interface per il tray helper ---
 
@@ -220,7 +311,11 @@ class CommandQuiverApp(Gtk.Application):
     def _toggle_sidebar(self) -> None:
         """Mostra o nasconde il pannello laterale."""
         if self._sidebar is None:
-            self.do_activate()
+            logger.info("Toggle: sidebar non esiste, creo via do_activate")
+            try:
+                self.do_activate()
+            except Exception:
+                logger.exception("Errore creazione sidebar in toggle")
             return
 
         if self._sidebar.get_visible():
@@ -254,7 +349,12 @@ class CommandQuiverApp(Gtk.Application):
             was_visible = self._sidebar.get_visible()
             self.remove_window(self._sidebar)
             self._sidebar.destroy()
-            self._sidebar = SidebarPanel(db=self._db, settings=self._settings)
+            self._sidebar = SidebarPanel(
+                db=self._db,
+                settings=self._settings,
+                on_data_changed=self.on_data_changed,
+                on_sync_toggled=self._on_sync_toggled,
+            )
             self.add_window(self._sidebar)
             if was_visible:
                 self._sidebar.present()
@@ -270,7 +370,23 @@ class CommandQuiverApp(Gtk.Application):
             GLib.source_remove(self._tray_health_source)
             self._tray_health_source = 0
 
+        # Ferma debounce sync
+        if self._sync_debounce_id:
+            GLib.source_remove(self._sync_debounce_id)
+            self._sync_debounce_id = 0
+
         self._stop_tray_helper()
+
+        # Sync finale con timeout 5s (non blocca la chiusura se rete lenta)
+        if self._sync_engine is not None:
+            sync_thread = threading.Thread(
+                target=self._sync_engine.sync,
+                daemon=True,
+            )
+            sync_thread.start()
+            sync_thread.join(timeout=5)
+            if sync_thread.is_alive():
+                logger.warning("Sync finale timeout, chiusura senza attendere")
 
         if self._settings:
             save_settings(self._settings)

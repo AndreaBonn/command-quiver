@@ -2,13 +2,15 @@
 
 import json
 import logging
-from dataclasses import asdict, dataclass
+import os
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "command-quiver"
 DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "settings.json"
+SYNC_TOKEN_PATH = DEFAULT_CONFIG_DIR / ".sync_token"
 
 VALID_LANGUAGES = ("it", "en")
 VALID_SORT_ORDERS = (
@@ -21,6 +23,18 @@ VALID_SORT_ORDERS = (
 
 
 @dataclass
+class SyncSettings:
+    """Configurazione sincronizzazione GitHub."""
+
+    enabled: bool = False
+    repo_owner: str = ""
+    repo_name: str = ""
+    file_path: str = "vault.json"
+    last_sha: str = ""
+    last_sync: str = ""
+
+
+@dataclass
 class Settings:
     """Impostazioni dell'applicazione con valori di default."""
 
@@ -30,6 +44,7 @@ class Settings:
     window_height: int = 600
     theme: str = "auto"
     language: str = "it"
+    sync: SyncSettings = field(default_factory=SyncSettings)
 
     def __post_init__(self) -> None:
         """Valida i valori dopo l'inizializzazione."""
@@ -41,6 +56,11 @@ class Settings:
             self.window_width = 520
         if self.window_height < 300:
             self.window_height = 600
+        # Converte dict in SyncSettings se caricato da JSON
+        if isinstance(self.sync, dict):
+            self.sync = SyncSettings(
+                **{k: v for k, v in self.sync.items() if k in SyncSettings.__dataclass_fields__}
+            )
 
 
 def load_settings(config_path: Path | None = None) -> Settings:
@@ -76,3 +96,29 @@ def save_settings(settings: Settings, config_path: Path | None = None) -> None:
         encoding="utf-8",
     )
     logger.info("Impostazioni salvate: %s", path)
+
+
+def load_sync_token() -> str:
+    """Carica il token GitHub dal file dedicato."""
+    if not SYNC_TOKEN_PATH.exists():
+        return ""
+    try:
+        return SYNC_TOKEN_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        logger.exception("Errore lettura token sync")
+        return ""
+
+
+def save_sync_token(token: str) -> None:
+    """Salva il token GitHub in un file con permessi restrittivi (600)."""
+    SYNC_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SYNC_TOKEN_PATH.write_text(token + "\n", encoding="utf-8")
+    os.chmod(SYNC_TOKEN_PATH, 0o600)
+    logger.info("Token sync salvato: %s", SYNC_TOKEN_PATH)
+
+
+def delete_sync_token() -> None:
+    """Rimuove il file token."""
+    if SYNC_TOKEN_PATH.exists():
+        SYNC_TOKEN_PATH.unlink()
+        logger.info("Token sync rimosso")

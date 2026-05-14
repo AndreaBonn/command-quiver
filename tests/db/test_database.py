@@ -234,7 +234,7 @@ class TestMigrationSystem:
         db.initialize()
 
         version = db.connection.execute("PRAGMA user_version").fetchone()[0]
-        assert version == 1
+        assert version == 2
         db.close()
 
     def test_fresh_db_gets_latest_version(self, tmp_path: Path) -> None:
@@ -244,7 +244,7 @@ class TestMigrationSystem:
         db.initialize()
 
         version = db.connection.execute("PRAGMA user_version").fetchone()[0]
-        assert version >= 1
+        assert version >= 2
         db.close()
 
 
