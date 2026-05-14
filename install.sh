@@ -7,8 +7,6 @@ set -euo pipefail
 APP_NAME="command-quiver"
 INSTALL_DIR="$HOME/.local/share/$APP_NAME"
 CONFIG_DIR="$HOME/.config/$APP_NAME"
-AUTOSTART_DIR="$HOME/.config/autostart"
-DESKTOP_FILE="$AUTOSTART_DIR/$APP_NAME.desktop"
 SYMLINK="/usr/local/bin/$APP_NAME"
 
 # Colori per output
@@ -91,7 +89,6 @@ fi
 # 3. Crea directory
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$CONFIG_DIR"
-mkdir -p "$AUTOSTART_DIR"
 info "Directory create"
 
 # 4. Copia il package Python mantenendo la struttura
@@ -141,16 +138,6 @@ APPS_DESKTOP="$HOME/.local/share/applications/$APP_ID.desktop"
 cp "$DESKTOP_SRC" "$APPS_DESKTOP"
 info "Desktop file installato: $APPS_DESKTOP"
 
-# .desktop in autostart (avvio automatico al login) — aggiunge flag autostart
-cp "$DESKTOP_SRC" "$DESKTOP_FILE"
-cat >> "$DESKTOP_FILE" << AUTOSTART_FLAGS
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-AUTOSTART_FLAGS
-
-info "File autostart creato: $DESKTOP_FILE"
-
 # 8. Crea symlink per avvio da terminale
 if [ -L "$SYMLINK" ] || [ -f "$SYMLINK" ]; then
     sudo rm -f "$SYMLINK"
@@ -176,7 +163,6 @@ echo -e "${GREEN}╠════════════════════
 echo -e "${GREEN}║${NC} App:      $INSTALL_DIR"
 echo -e "${GREEN}║${NC} Config:   $CONFIG_DIR"
 echo -e "${GREEN}║${NC} Database: ~/.local/share/command-quiver/vault.db"
-echo -e "${GREEN}║${NC} Autostart: attivo al login"
 echo -e "${GREEN}║${NC}"
 echo -e "${GREEN}║${NC} Avvio:    ${YELLOW}command-quiver${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
