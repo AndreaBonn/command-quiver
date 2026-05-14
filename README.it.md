@@ -29,6 +29,62 @@ Command Quiver by Bonn vive nella system tray di GNOME e offre accesso rapido a 
 - Persistenza SQLite con WAL mode e recovery automatico da corruzione
 - Singola istanza garantita via D-Bus
 - Impostazioni persistenti (ordinamento, dimensione finestra, lingua, tema)
+- Sincronizzazione tra dispositivi tramite repository privato GitHub
+
+## Sincronizzazione multi-dispositivo
+
+Command Quiver permette di sincronizzare voci e sezioni tra piu computer usando un repository privato GitHub come storage. Non servono dipendenze esterne -- la sincronizzazione usa solo la libreria standard Python.
+
+### Come funziona
+
+- All'avvio, l'app scarica dal repository remoto e integra le nuove voci
+- Dopo ogni modifica (creazione, modifica, cancellazione), l'app invia le modifiche al repository entro 30 secondi
+- Alla chiusura, viene eseguita una sincronizzazione finale
+- I conflitti si risolvono automaticamente: vince la modifica piu recente
+- Le cancellazioni si propagano a tutti i dispositivi
+
+### Configurazione
+
+#### 1. Crea un repository privato su GitHub
+
+1. Vai su [github.com/new](https://github.com/new)
+2. Imposta **Repository name** su `command-quiver-sync` (o qualsiasi nome)
+3. Imposta **Visibility** su **Private**
+4. **Non** spuntare "Add a README" -- il repository deve essere vuoto
+5. Clicca **Create repository**
+
+#### 2. Crea un Personal Access Token
+
+1. Vai su [github.com/settings/tokens?type=beta](https://github.com/settings/tokens?type=beta) (Fine-grained tokens)
+2. Clicca **Generate new token**
+3. Imposta **Token name** su `command-quiver-sync`
+4. Imposta **Expiration** a piacere (1 anno consigliato)
+5. In **Repository access**, seleziona **Only select repositories** e scegli il tuo repository di sync
+6. In **Permissions > Repository permissions**, imposta **Contents** su **Read and write**
+7. Clicca **Generate token**
+8. Copia il token (inizia con `github_pat_...`) -- lo vedrai solo questa volta
+
+#### 3. Configura in Command Quiver
+
+1. Apri Command Quiver
+2. Clicca l'icona sync (ingranaggio) nell'angolo in basso a destra
+3. Compila i campi:
+   - **Proprietario repo**: il tuo username GitHub
+   - **Nome repo**: `command-quiver-sync`
+   - **Token**: incolla il token dal passo 2
+4. Clicca **Testa connessione** per verificare
+5. Se la connessione riesce, clicca **Attiva sync**
+
+#### 4. Configura gli altri computer
+
+Ripeti il passo 3 su ogni computer (usa lo stesso repository e token). Al primo avvio con sync attivo, l'app scarica tutte le voci dal repository e le integra con i dati locali.
+
+### Percorsi dei dati di sync
+
+| Percorso | Contenuto |
+|---|---|
+| `~/.config/command-quiver/settings.json` | Configurazione sync (repo, stato) |
+| `~/.config/command-quiver/.sync_token` | Token GitHub (permessi file: 600) |
 
 ## Requisiti
 
