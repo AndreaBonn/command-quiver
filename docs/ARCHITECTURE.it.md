@@ -9,6 +9,7 @@ Reference tecnico con diagrammi dettagliati degli internals di Command Quiver.
 Processo principale GTK4, processo tray GTK3 (separato per compatibilita), e sync GitHub via Contents API.
 
 ```mermaid
+%%{init: {'theme': 'default'}}%%
 graph LR
   subgraph main_proc["Processo principale - GTK4"]
     direction TB
@@ -34,6 +35,16 @@ graph LR
   sync_eng -->|"Lettura/Scrittura"| db
   sync_eng -->|"Contents API<br/>urllib"| github
   app -->|"Carica/Salva"| settings
+
+  classDef core fill:#2563eb,stroke:#1d4ed8,color:#fff
+  classDef data fill:#d97706,stroke:#b45309,color:#fff
+  classDef ext fill:#6b7280,stroke:#4b5563,color:#fff
+  classDef engine fill:#059669,stroke:#047857,color:#fff
+
+  class app,sidebar core
+  class db,settings data
+  class github,tray ext
+  class sync_eng engine
 ```
 
 ## Flusso di sincronizzazione
@@ -171,6 +182,7 @@ stateDiagram-v2
 Albero widget GTK4. Il tray helper gira come processo GTK3 separato, connesso via D-Bus.
 
 ```mermaid
+%%{init: {'theme': 'default'}}%%
 graph TD
   app["CommandQuiverApp<br/>Gtk.Application"]
   sidebar["SidebarPanel<br/>Gtk.Window"]
@@ -204,4 +216,16 @@ graph TD
   bottom_bar --> new_entry
   bottom_bar --> sync_btn
   bottom_bar --> sync_label
+
+  classDef root fill:#1d4ed8,stroke:#1e40af,color:#fff
+  classDef container fill:#2563eb,stroke:#1d4ed8,color:#fff
+  classDef leaf fill:#bfdbfe,stroke:#3b82f6,color:#1e3a5f
+  classDef ext fill:#6b7280,stroke:#4b5563,color:#fff
+  classDef action fill:#d97706,stroke:#b45309,color:#fff
+
+  class app root
+  class sidebar,paned,section_panel,right_panel,bottom_bar container
+  class search,section_list,entry_list,entry_row,sort_dd,sync_label leaf
+  class tray ext
+  class new_section,new_entry,sync_btn action
 ```

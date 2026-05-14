@@ -22,6 +22,7 @@ Command Quiver by Bonn lives in your GNOME system tray and gives you quick acces
 ## Architecture
 
 ```mermaid
+%%{init: {'theme': 'default'}}%%
 graph LR
   subgraph main_proc["Main Process - GTK4"]
     direction TB
@@ -47,6 +48,16 @@ graph LR
   sync_eng -->|"Read/Write"| db
   sync_eng -->|"Contents API<br/>urllib"| github
   app -->|"Load/Save"| settings
+
+  classDef core fill:#2563eb,stroke:#1d4ed8,color:#fff
+  classDef data fill:#d97706,stroke:#b45309,color:#fff
+  classDef ext fill:#6b7280,stroke:#4b5563,color:#fff
+  classDef engine fill:#059669,stroke:#047857,color:#fff
+
+  class app,sidebar core
+  class db,settings data
+  class github,tray ext
+  class sync_eng engine
 ```
 
 > For detailed technical diagrams (database schema, state machines, UI component tree), see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
