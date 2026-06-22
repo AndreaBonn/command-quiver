@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Wrapper eseguibile installato in /usr/bin dal pacchetto Debian.
+# Aggiunge il payload Python al PYTHONPATH e avvia l'applicazione.
+set -euo pipefail
+export PYTHONPATH="/usr/lib/command-quiver:${PYTHONPATH:-}"
+exec python3 -m command_quiver.main "$@"

@@ -1,0 +1,14 @@
+Package: command-quiver
+Version: @VERSION@
+Architecture: all
+Maintainer: Andrea Bonacci <delivery@linkalab.it>
+Section: utils
+Priority: optional
+Depends: python3 (>= 3.10), python3-gi, python3-gi-cairo, gir1.2-gtk-4.0, gnome-terminal
+Homepage: https://github.com/AndreaBonn/command-quiver
+Description: Personal library of AI prompts and shell commands
+ Command Quiver is a GTK4 desktop application for the GNOME desktop that keeps a
+ searchable, sectioned library of AI prompts and shell commands. Prompts are
+ copied to the clipboard; shell commands run in gnome-terminal. Entries are
+ stored in a local SQLite database and can be synced across devices through a
+ private GitHub repository.

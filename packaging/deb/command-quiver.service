@@ -1,0 +1,18 @@
+[Unit]
+Description=Command Quiver
+Documentation=https://github.com/AndreaBonn/command-quiver
+After=graphical-session.target
+PartOf=graphical-session.target
+# Evita il restart loop infinito se l'avvio fallisce di continuo
+# (es. sessione grafica non disponibile): max 3 tentativi in 30s.
+StartLimitIntervalSec=30
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/command-quiver
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

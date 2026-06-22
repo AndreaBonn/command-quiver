@@ -1,0 +1,6 @@
+#!/bin/sh
+# Pre-rimozione: nessuna azione necessaria a livello di sistema.
+# Il systemd user service va fermato e disabilitato dall'utente con:
+#   systemctl --user disable --now command-quiver
+set -e
+exit 0
