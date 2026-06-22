@@ -19,3 +19,6 @@ doc_progetto/
 coverage/
 test-results.xml
 coverage.json
+
+# Backup locali dei dati utente (non versionare)
+backup/
