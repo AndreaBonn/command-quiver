@@ -181,6 +181,29 @@ sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 gnome-terminal
 
 ## Installation
 
+### From the .deb package (recommended, fastest)
+
+This is the quickest way to install Command Quiver on Ubuntu/Debian.
+
+1. Download the latest `.deb` from the [releases page](https://github.com/AndreaBonn/command-quiver/releases/latest).
+2. Install it (apt resolves the system dependencies automatically):
+
+```bash
+sudo apt install ./command-quiver_*.deb
+```
+
+After installation, launch the app from the GNOME menu or by running `command-quiver` in a terminal.
+
+To start it automatically at login (and restart it on crash):
+
+```bash
+systemctl --user enable --now command-quiver.service
+```
+
+See [docs/PACKAGING.md](docs/PACKAGING.md) for build, systemd and uninstall details.
+
+### From source
+
 ```bash
 git clone https://github.com/AndreaBonn/command-quiver.git
 cd command-quiver
