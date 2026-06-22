@@ -18,4 +18,5 @@ jobs:
         with:
           llm_provider: 'groq,gemini,openai'
           llm_api_key: '${{ secrets.GROQ_API_KEY }},${{ secrets.GEMINI_API_KEY }},${{ secrets.OPENAI_API_KEY }}'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           language: 'italian'
