@@ -46,6 +46,13 @@ for SIZE in 32 48 64 128; do
     ICON="$HOME/.local/share/icons/hicolor/${SIZE}x${SIZE}/apps/$APP_ID.png"
     [ -f "$ICON" ] && rm -f "$ICON"
 done
+# Rimuovi le SVG dalla cartella scalable: la symbolic legittima e
+# l'eventuale scalable spuria lasciata da vecchie installazioni (copia della
+# symbolic monocroma che, avendo priorita sui PNG, rende l'icona "bianca" nel dock)
+SCALABLE_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
+for SVG in "$APP_ID.svg" "$APP_ID-symbolic.svg"; do
+    [ -f "$SCALABLE_DIR/$SVG" ] && rm -f "$SCALABLE_DIR/$SVG"
+done
 gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor/" 2>/dev/null || true
 info "Icone rimosse"
 
