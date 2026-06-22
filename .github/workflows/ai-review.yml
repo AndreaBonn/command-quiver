@@ -15,9 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: AndreaBonn/ai-pr-reviewer@main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           llm_provider: 'groq,gemini,openai'
           llm_api_key: '${{ secrets.GROQ_API_KEY }},${{ secrets.GEMINI_API_KEY }},${{ secrets.OPENAI_API_KEY }}'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           language: 'italian'
