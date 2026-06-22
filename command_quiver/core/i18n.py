@@ -85,11 +85,7 @@ _TRANSLATIONS: dict[Language, dict[str, str]] = {
         "section.confirm_delete_detail": (
             "Le voci contenute verranno spostate nella sezione 'Generale'."
         ),
-        # --- Tray menu ---
-        "tray.toggle": "Mostra/Nascondi",
-        "tray.new_entry": "Nuova voce",
-        "tray.language": "Lingua",
-        "tray.quit": "Esci",
+        "sidebar.language": "Lingua",
         # --- Executor ---
         "executor.terminal_not_found": (
             "gnome-terminal non trovato. Installalo con: sudo apt install gnome-terminal"
@@ -175,11 +171,7 @@ _TRANSLATIONS: dict[Language, dict[str, str]] = {
         "section.btn_create": "Create",
         "section.confirm_delete_title": 'Delete section "{name}"?',
         "section.confirm_delete_detail": "Entries will be moved to the 'General' section.",
-        # --- Tray menu ---
-        "tray.toggle": "Show/Hide",
-        "tray.new_entry": "New entry",
-        "tray.language": "Language",
-        "tray.quit": "Quit",
+        "sidebar.language": "Language",
         # --- Executor ---
         "executor.terminal_not_found": (
             "gnome-terminal not found. Install it with: sudo apt install gnome-terminal"

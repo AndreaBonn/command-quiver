@@ -1,11 +1,11 @@
 [project]
 name = "command-quiver"
 version = "1.0.0"
-description = "Accesso rapido a prompt AI e comandi shell dalla system tray di GNOME"
+description = "Libreria desktop GNOME per prompt AI e comandi shell, ricercabili e organizzati in sezioni"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 readme = "README.md"
-keywords = ["gnome", "tray", "prompt", "shell", "gtk4"]
+keywords = ["gnome", "prompt", "shell", "gtk4"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: X11 Applications :: GTK",

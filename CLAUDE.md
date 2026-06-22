@@ -1,11 +1,11 @@
 # Command Quiver by Bonn
 
-App desktop Ubuntu per system tray GNOME. Libreria personale di prompt AI e comandi shell, ricercabili e organizzati in sezioni.
+App desktop Ubuntu/GNOME. Libreria personale di prompt AI e comandi shell, ricercabili e organizzati in sezioni.
 
 ## Stack
 
 - Python 3.10+ (solo stdlib + PyGObject)
-- GTK4 per UI, StatusNotifierItem D-Bus per tray icon
+- GTK4 per UI
 - SQLite3 per persistenza
 - No dipendenze pip esterne
 
@@ -14,8 +14,7 @@ App desktop Ubuntu per system tray GNOME. Libreria personale di prompt AI e coma
 ```
 command_quiver/
 ├── main.py          # Entry point, logging, --version flag
-├── app.py           # GtkApplication lifecycle, tray health check, D-Bus
-├── tray_helper.py   # Processo separato GTK3 + AyatanaAppIndicator3
+├── app.py           # GtkApplication lifecycle, sync, cambio lingua
 ├── db/
 │   ├── database.py  # SQLite, schema, migration system (PRAGMA user_version), auto-backup
 │   └── queries.py   # Repository CRUD, export/import JSON, paginazione
@@ -27,7 +26,7 @@ command_quiver/
 │   ├── settings.py       # Config JSON persistente + SyncSettings + token management
 │   └── sync_engine.py    # Sync engine: export, merge (last-write-wins), push/pull
 ├── ui/
-│   ├── sidebar.py        # Pannello laterale (debounce search, sort personale)
+│   ├── sidebar.py        # Pannello laterale (debounce search, sort personale, selettore lingua)
 │   ├── entry_list.py     # Lista voci con ordinamento e move up/down
 │   ├── entry_editor.py   # Dialog creazione/modifica
 │   ├── section_panel.py  # Pannello sezioni con CRUD
@@ -35,7 +34,7 @@ command_quiver/
 │   ├── sync_dialog.py    # Dialog configurazione sync GitHub
 │   └── styles.py         # CSS theme-aware (@success_color, @accent_color)
 └── assets/
-    └── icon.png     # Icona tray 32x32
+    └── icon.png     # Icona applicazione
 ```
 
 ## Convenzioni
@@ -48,6 +47,7 @@ command_quiver/
 - Sync token path: ~/.config/command-quiver/.sync_token (600 perms)
 - Single instance: GtkApplication + D-Bus (FLAGS_NONE)
 - Backup auto DB: ogni 5 avvii, max 3 copie
+- Chiusura finestra (X o Escape) = termina l'app, con sync finale e salvataggio stato
 
 ## Sync cross-device (GitHub)
 
@@ -57,13 +57,6 @@ Sincronizzazione via GitHub private repo (Contents API, solo stdlib urllib).
 - Tombstones per propagare cancellazioni (cleanup 90gg)
 - Sync: all'avvio (pull+merge), debounced 30s dopo CRUD, alla chiusura
 - Token GitHub in file separato con permessi 600
-
-## Architettura tray icon
-
-Processo separato (tray_helper.py) con GTK3 + AyatanaAppIndicator3.
-GTK3 e GTK4 non coesistono nello stesso processo.
-Comunicazione via D-Bus. Health check ogni 10s con auto-restart.
-Compatibile con GNOME Shell + estensione AppIndicator (preinstallata su Ubuntu).
 
 ## Comandi
 

@@ -2,7 +2,7 @@
 
 # Command Quiver by Bonn
 
-A personal library of AI prompts and shell commands, accessible from the GNOME system tray. Search, organize by sections, copy to clipboard or execute in terminal.
+A personal library of AI prompts and shell commands for the GNOME desktop. Search, organize by sections, copy to clipboard or execute in terminal.
 
 <div align="center">
 
@@ -17,7 +17,7 @@ A personal library of AI prompts and shell commands, accessible from the GNOME s
 
 ## Overview
 
-Command Quiver by Bonn lives in your GNOME system tray and gives you quick access to frequently used AI prompts and shell commands. Entries are stored in a local SQLite database, organized into sections, and searchable by name. Prompts are copied to the clipboard; shell commands can be executed directly in gnome-terminal.
+Command Quiver by Bonn gives you quick access to frequently used AI prompts and shell commands. Entries are stored in a local SQLite database, organized into sections, and searchable by name. Prompts are copied to the clipboard; shell commands can be executed directly in gnome-terminal.
 
 ## Architecture
 
@@ -33,17 +33,12 @@ graph LR
     settings["Settings JSON"]
   end
 
-  subgraph tray_proc["Separate Process - GTK3"]
-    tray["tray_helper.py<br/>AyatanaAppIndicator3"]
-  end
-
   github["GitHub Private Repo"]
 
-  tray -->|"D-Bus: Toggle, NewEntry,<br/>ChangeLanguage, Quit"| app
-  app -->|"Health check 10s<br/>+ auto-restart"| tray
   app --> sidebar
   sidebar -->|"CRUD"| db
   sidebar -->|"Data changed"| app
+  sidebar -->|"Language switch"| app
   app -->|"Debounce 30s"| sync_eng
   sync_eng -->|"Read/Write"| db
   sync_eng -->|"Contents API<br/>urllib"| github
@@ -56,7 +51,7 @@ graph LR
 
   class app,sidebar core
   class db,settings data
-  class github,tray ext
+  class github ext
   class sync_eng engine
 ```
 
@@ -64,7 +59,6 @@ graph LR
 
 ## Features
 
-- System tray icon with context menu (show/hide, new entry, quit)
 - Sidebar panel with search and multiple sort modes (alphabetical, chronological, custom)
 - Two entry types: AI prompts (copy to clipboard) and shell commands (run in terminal)
 - Sections for organizing entries, with drag-and-drop reordering
@@ -176,15 +170,13 @@ Repeat step 3 on each computer (use the same repository and token). On first lau
 
 - Python >= 3.10
 - GTK4 and PyGObject
-- AyatanaAppIndicator3 (for system tray icon)
 - gnome-terminal (for shell command execution)
 - pycairo (for icon generation)
 
 On Ubuntu/Debian:
 
 ```bash
-sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 \
-    gir1.2-ayatanaappindicator3-0.1 gnome-terminal
+sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 gnome-terminal
 ```
 
 ## Installation
@@ -203,7 +195,7 @@ Start the application:
 uv run python command_quiver/main.py
 ```
 
-The tray icon appears in the GNOME top bar. Left-click to toggle the sidebar, right-click for the context menu.
+The main window opens on launch. Closing it (window close button or `Esc`) quits the application, running a final sync and saving your state first.
 
 From the sidebar:
 
@@ -211,6 +203,7 @@ From the sidebar:
 - Click an entry to copy it to the clipboard (prompts) or execute it (shell commands)
 - Use the search bar to filter entries by name
 - Switch sort mode with the dropdown (Recent, A-Z, Z-A, Custom)
+- Switch interface language (Italian / English) with the selector in the bottom bar
 - Manage sections with **+ Section**, or right-click a section to rename/delete
 
 ### Data locations

@@ -6,7 +6,7 @@ Developer reference with detailed diagrams of Command Quiver internals.
 
 ## System Architecture
 
-GTK4 main process, GTK3 tray process (separate for compatibility), and GitHub sync via Contents API.
+GTK4 main process and GitHub sync via Contents API.
 
 ```mermaid
 %%{init: {'theme': 'default'}}%%
@@ -20,17 +20,12 @@ graph LR
     settings["Settings JSON"]
   end
 
-  subgraph tray_proc["Separate Process - GTK3"]
-    tray["tray_helper.py<br/>AyatanaAppIndicator3"]
-  end
-
   github["GitHub Private Repo"]
 
-  tray -->|"D-Bus: Toggle, NewEntry,<br/>ChangeLanguage, Quit"| app
-  app -->|"Health check 10s<br/>+ auto-restart"| tray
   app --> sidebar
   sidebar -->|"CRUD"| db
   sidebar -->|"Data changed"| app
+  sidebar -->|"Language switch"| app
   app -->|"Debounce 30s"| sync_eng
   sync_eng -->|"Read/Write"| db
   sync_eng -->|"Contents API<br/>urllib"| github
@@ -43,7 +38,7 @@ graph LR
 
   class app,sidebar core
   class db,settings data
-  class github,tray ext
+  class github ext
   class sync_eng engine
 ```
 
@@ -158,28 +153,28 @@ stateDiagram-v2
   end note
 ```
 
-### Tray Process Health Check
+### Application Lifecycle
 
-The main process polls the tray helper every 10s. If the process has exited, it auto-restarts via `subprocess.Popen`.
+The main window is the application: closing it (close button or `Esc`) runs a final sync, saves state, and quits via `do_shutdown`.
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Running
+  [*] --> Starting
 
-  Running --> Running : Health check OK every 10s
-  Running --> Crashed : Process exited
-  Crashed --> Restarting : Auto-restart detected
-  Restarting --> Running : subprocess.Popen
+  Starting --> Active : do_startup + do_activate
+  Active --> Active : Language switch rebuilds sidebar
+  Active --> ShuttingDown : Window closed (X or Esc)
+  ShuttingDown --> [*] : Final sync + save + db.close
 
-  note right of Crashed
-    tray_process.poll
-    returns exit code
+  note right of ShuttingDown
+    do_shutdown
+    final sync timeout 5s
   end note
 ```
 
 ## UI Component Hierarchy
 
-GTK4 widget tree. The tray helper runs as a separate GTK3 process, connected via D-Bus.
+GTK4 widget tree.
 
 ```mermaid
 %%{init: {'theme': 'default'}}%%
@@ -197,12 +192,11 @@ graph TD
   sort_dd["Sort DropDown<br/>5 options"]
   bottom_bar["Bottom Bar"]
   new_entry["New Entry btn<br/>&#8594; EntryEditorDialog"]
+  lang_dd["Language DropDown<br/>IT / EN"]
   sync_btn["Sync btn<br/>&#8594; SyncSetupDialog"]
   sync_label["Sync status label"]
-  tray["tray_helper<br/>separate process, D-Bus"]
 
   app --> sidebar
-  app -.->|"D-Bus"| tray
   sidebar --> search
   sidebar --> paned
   sidebar --> bottom_bar
@@ -214,18 +208,17 @@ graph TD
   right_panel --> sort_dd
   entry_list --> entry_row
   bottom_bar --> new_entry
+  bottom_bar --> lang_dd
   bottom_bar --> sync_btn
   bottom_bar --> sync_label
 
   classDef root fill:#1d4ed8,stroke:#1e40af,color:#fff
   classDef container fill:#2563eb,stroke:#1d4ed8,color:#fff
   classDef leaf fill:#bfdbfe,stroke:#3b82f6,color:#1e3a5f
-  classDef ext fill:#6b7280,stroke:#4b5563,color:#fff
   classDef action fill:#d97706,stroke:#b45309,color:#fff
 
   class app root
   class sidebar,paned,section_panel,right_panel,bottom_bar container
-  class search,section_list,entry_list,entry_row,sort_dd,sync_label leaf
-  class tray ext
+  class search,section_list,entry_list,entry_row,sort_dd,sync_label,lang_dd leaf
   class new_section,new_entry,sync_btn action
 ```

@@ -38,28 +38,6 @@ if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR"
 fi
 info "Python $PYTHON_VERSION rilevato"
 
-# 1c. Verifica estensione GNOME AppIndicator (necessaria per il tray icon)
-if command -v gnome-extensions &>/dev/null; then
-    if gnome-extensions list --enabled 2>/dev/null | grep -qi "appindicator"; then
-        info "Estensione AppIndicator attiva"
-    else
-        warn "L'estensione 'AppIndicator and KStatusNotifierItem Support' non è attiva."
-        warn "Senza di essa l'icona nella barra superiore non sarà visibile."
-        warn ""
-        warn "Per installarla/attivarla:"
-        warn "  sudo apt install gnome-shell-extension-appindicator"
-        warn "  gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com"
-        warn "  (potrebbe servire un logout/login)"
-        warn ""
-        read -r -p "Continuare comunque l'installazione? [S/n] " response
-        if [[ "$response" =~ ^[nN]$ ]]; then
-            error "Installazione annullata. Attiva l'estensione e riprova."
-        fi
-    fi
-else
-    warn "gnome-extensions non trovato — impossibile verificare AppIndicator"
-fi
-
 # 2. Installa dipendenze di sistema
 info "Installazione dipendenze di sistema..."
 DEPS=(
@@ -67,7 +45,6 @@ DEPS=(
     python3-gi
     python3-gi-cairo
     gir1.2-gtk-4.0
-    gir1.2-ayatanaappindicator3-0.1
     gnome-terminal
 )
 

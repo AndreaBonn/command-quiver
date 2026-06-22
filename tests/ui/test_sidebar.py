@@ -1,7 +1,7 @@
 """Test per il pannello laterale Sidebar: integrazione con DB reale."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from command_quiver.core.settings import Settings
 from command_quiver.db.database import Database
@@ -235,10 +235,31 @@ class TestSidebarPanel:
 
         with patch("command_quiver.ui.sidebar.save_settings") as mock_save:
             result = sidebar._on_close_request(sidebar)
-            assert result is True  # Impedisce la distruzione
+            assert result is False  # Consente la distruzione: l'app termina
             mock_save.assert_called_once()
             saved = mock_save.call_args[0][0]
             assert saved.last_section_id == 3
+
+    def test_language_dropdown_invokes_callback_with_selected_code(
+        self,
+        gtk_init,
+        db_for_ui: Database,
+    ) -> None:
+        from command_quiver.ui.sidebar import SidebarPanel
+
+        callback = MagicMock()
+        sidebar = SidebarPanel(
+            db=db_for_ui,
+            settings=Settings(),  # lingua default "it"
+            on_language_changed=callback,
+        )
+        sidebar._lang_dropdown.set_selected(1)  # "en"
+
+        # idle_add eseguito subito per verificare l'invocazione del callback
+        with patch("gi.repository.GLib.idle_add", side_effect=lambda fn, *a: fn(*a)):
+            sidebar._on_language_selected(sidebar._lang_dropdown, None)
+
+        callback.assert_called_once_with("en")
 
     def test_sort_change_persists(
         self,

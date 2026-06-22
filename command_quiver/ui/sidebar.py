@@ -41,12 +41,17 @@ class SidebarPanel(Gtk.Window):
         "personal",
     ]
 
+    # Selettore lingua: codici e autonimi (mostrati uguali in ogni lingua)
+    _LANG_VALUES = ["it", "en"]
+    _LANG_LABELS = ["Italiano", "English"]
+
     def __init__(
         self,
         db: Database,
         settings: Settings,
         on_data_changed: Callable[[], None] | None = None,
         on_sync_toggled: Callable[[], None] | None = None,
+        on_language_changed: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(
             title="Command Quiver by Bonn",
@@ -63,6 +68,7 @@ class SidebarPanel(Gtk.Window):
         self._search_debounce_id: int = 0
         self._on_data_changed = on_data_changed
         self._on_sync_toggled_cb = on_sync_toggled
+        self._on_language_changed_cb = on_language_changed
 
         load_app_css()
         self._build_ui()
@@ -164,6 +170,18 @@ class SidebarPanel(Gtk.Window):
         new_btn.set_hexpand(True)
         bottom_bar.append(new_btn)
 
+        # Selettore lingua interfaccia (it/en)
+        self._lang_dropdown = Gtk.DropDown()
+        self._lang_dropdown.set_model(Gtk.StringList.new(self._LANG_LABELS))
+        self._lang_dropdown.set_tooltip_text(t("sidebar.language"))
+        from command_quiver.core.i18n import get_language
+
+        current_lang = get_language()
+        if current_lang in self._LANG_VALUES:
+            self._lang_dropdown.set_selected(self._LANG_VALUES.index(current_lang))
+        self._lang_dropdown.connect("notify::selected", self._on_language_selected)
+        bottom_bar.append(self._lang_dropdown)
+
         # Bottone sync (icona ingranaggio)
         sync_btn = Gtk.Button(icon_name="emblem-synchronizing-symbolic")
         sync_btn.set_tooltip_text(t("sync.title"))
@@ -197,6 +215,19 @@ class SidebarPanel(Gtk.Window):
             sort_order=sort_order,
         )
         self._entry_list.update_entries(entries, show_move=(sort_order == "personal"))
+
+    def cancel_pending_timers(self) -> None:
+        """Annulla i timer GLib pendenti (API pubblica per app.py).
+
+        Va invocato prima di distruggere la finestra, ad esempio quando l'app
+        ricostruisce la sidebar per il cambio lingua, per evitare che un timer
+        di debounce spari su widget ormai distrutti.
+        """
+        if self._search_debounce_id:
+            from gi.repository import GLib
+
+            GLib.source_remove(self._search_debounce_id)
+            self._search_debounce_id = 0
 
     def refresh_all(self) -> None:
         """Refresh completo dopo sync (API pubblica per app.py)."""
@@ -249,6 +280,20 @@ class SidebarPanel(Gtk.Window):
         self._settings.sort_order = self._SORT_VALUES[dropdown.get_selected()]
         save_settings(self._settings)
         self._refresh_entries()
+
+    def _on_language_selected(self, dropdown: Gtk.DropDown, _pspec) -> None:
+        """Cambia la lingua dell'interfaccia tramite il callback dell'app."""
+        lang = self._LANG_VALUES[dropdown.get_selected()]
+        from command_quiver.core.i18n import get_language
+
+        if lang == get_language() or self._on_language_changed_cb is None:
+            return
+
+        # Deferito: il callback ricostruisce questa finestra e non si può
+        # distruggere un widget durante il proprio handler di segnale.
+        from gi.repository import GLib
+
+        GLib.idle_add(self._on_language_changed_cb, lang)
 
     def _on_entry_click(self, entry: Entry) -> None:
         """Apre l'editor per modificare una voce."""
@@ -341,19 +386,17 @@ class SidebarPanel(Gtk.Window):
         _keycode: int,
         _state: Gdk.ModifierType,
     ) -> bool:
-        """Chiude il pannello con Escape."""
+        """Chiude la finestra (e quindi l'app) con Escape."""
         if keyval == Gdk.KEY_Escape:
-            self.set_visible(False)
+            self.close()
             return True
         return False
 
     def _on_close_request(self, _window: Gtk.Window) -> bool:
-        """Salva stato e nasconde il pannello (non lo distrugge)."""
+        """Salva lo stato e lascia chiudere la finestra (l'app termina)."""
         self._settings.last_section_id = self._section_panel.current_section_id
         self._settings.window_width = self.get_width()
         self._settings.window_height = self.get_height()
         save_settings(self._settings)
 
-        # Nasconde invece di chiudere, per poterlo riaprire dal tray
-        self.set_visible(False)
-        return True  # Impedisce la distruzione
+        return False  # Consente la distruzione della finestra
