@@ -211,3 +211,228 @@ class TestInitServices:
             mock_load.assert_called_once()
             assert app._db is mock_db
             assert app._settings is mock_settings
+
+
+class TestSyncLifecycle:
+    """Test dei metodi di sync e del ciclo di vita non coperti altrove."""
+
+    def test_init_sync_disabled_does_not_create_engine(self) -> None:
+        with patch("command_quiver.app.Gtk"), patch("command_quiver.app.Gdk"):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._settings = MagicMock()
+            app._settings.sync.enabled = False
+
+            app._init_sync()
+
+            assert app._sync_engine is None
+
+    def test_init_sync_enabled_creates_engine_and_syncs(self) -> None:
+        with (
+            patch("command_quiver.app.Gtk"),
+            patch("command_quiver.app.Gdk"),
+            patch("command_quiver.core.sync_engine.SyncEngine") as mock_engine,
+        ):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._settings = MagicMock()
+            app._settings.sync.enabled = True
+            app._db = MagicMock()
+
+            with patch.object(app, "_run_sync_background") as mock_run:
+                app._init_sync()
+
+            mock_engine.assert_called_once()
+            assert app._sync_engine is mock_engine.return_value
+            mock_run.assert_called_once()
+
+    def test_run_sync_background_no_engine_is_noop(self) -> None:
+        with (
+            patch("command_quiver.app.Gtk"),
+            patch("command_quiver.app.Gdk"),
+            patch("command_quiver.app.threading") as mock_threading,
+        ):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._sync_engine = None
+
+            app._run_sync_background()
+
+            mock_threading.Thread.assert_not_called()
+
+    def test_run_sync_background_starts_daemon_thread(self) -> None:
+        with (
+            patch("command_quiver.app.Gtk"),
+            patch("command_quiver.app.Gdk"),
+            patch("command_quiver.app.threading") as mock_threading,
+        ):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._sync_engine = MagicMock()
+
+            app._run_sync_background()
+
+            mock_threading.Thread.assert_called_once()
+            mock_threading.Thread.return_value.start.assert_called_once()
+
+    def test_on_sync_complete_refreshes_sidebar_when_entries_pulled(self) -> None:
+        with patch("command_quiver.app.Gtk"), patch("command_quiver.app.Gdk"):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            sidebar = MagicMock()
+            app._sidebar = sidebar
+            result = MagicMock(success=True, entries_pulled=2, sections_pulled=0)
+
+            ret = app._on_sync_complete(result)
+
+            sidebar.refresh_all.assert_called_once()
+            sidebar.update_sync_status.assert_called_once_with(result)
+            assert ret is False
+
+    def test_on_sync_complete_no_refresh_when_nothing_pulled(self) -> None:
+        with patch("command_quiver.app.Gtk"), patch("command_quiver.app.Gdk"):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            sidebar = MagicMock()
+            app._sidebar = sidebar
+            result = MagicMock(success=True, entries_pulled=0, sections_pulled=0)
+
+            app._on_sync_complete(result)
+
+            sidebar.refresh_all.assert_not_called()
+            sidebar.update_sync_status.assert_called_once_with(result)
+
+    def test_on_sync_complete_failure_updates_status_only(self) -> None:
+        with patch("command_quiver.app.Gtk"), patch("command_quiver.app.Gdk"):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            sidebar = MagicMock()
+            app._sidebar = sidebar
+            result = MagicMock(success=False, entries_pulled=0, sections_pulled=0)
+
+            app._on_sync_complete(result)
+
+            sidebar.refresh_all.assert_not_called()
+            sidebar.update_sync_status.assert_called_once_with(result)
+
+    def test_on_sync_toggled_enabled_creates_engine(self) -> None:
+        with (
+            patch("command_quiver.app.Gtk"),
+            patch("command_quiver.app.Gdk"),
+            patch("command_quiver.core.sync_engine.SyncEngine") as mock_engine,
+        ):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._settings = MagicMock()
+            app._settings.sync.enabled = True
+            app._db = MagicMock()
+
+            with patch.object(app, "_run_sync_background") as mock_run:
+                app._on_sync_toggled()
+
+            assert app._sync_engine is mock_engine.return_value
+            mock_run.assert_called_once()
+
+    def test_on_sync_toggled_disabled_clears_engine(self) -> None:
+        with patch("command_quiver.app.Gtk"), patch("command_quiver.app.Gdk"):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._settings = MagicMock()
+            app._settings.sync.enabled = False
+            app._sync_engine = MagicMock()
+
+            app._on_sync_toggled()
+
+            assert app._sync_engine is None
+
+    def test_on_data_changed_without_engine_is_noop(self) -> None:
+        with (
+            patch("command_quiver.app.Gtk"),
+            patch("command_quiver.app.Gdk"),
+            patch("command_quiver.app.GLib") as mock_glib,
+        ):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._sync_engine = None
+
+            app.on_data_changed()
+
+            mock_glib.timeout_add_seconds.assert_not_called()
+
+    def test_on_data_changed_schedules_debounce(self) -> None:
+        with (
+            patch("command_quiver.app.Gtk"),
+            patch("command_quiver.app.Gdk"),
+            patch("command_quiver.app.GLib") as mock_glib,
+        ):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._sync_engine = MagicMock()
+            app._sync_debounce_id = 0
+            mock_glib.timeout_add_seconds.return_value = 99
+
+            app.on_data_changed()
+
+            mock_glib.timeout_add_seconds.assert_called_once()
+            assert app._sync_debounce_id == 99
+
+    def test_on_data_changed_resets_pending_timer(self) -> None:
+        with (
+            patch("command_quiver.app.Gtk"),
+            patch("command_quiver.app.Gdk"),
+            patch("command_quiver.app.GLib") as mock_glib,
+        ):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._sync_engine = MagicMock()
+            app._sync_debounce_id = 42
+
+            app.on_data_changed()
+
+            mock_glib.source_remove.assert_called_once_with(42)
+
+    def test_sync_debounce_fire_runs_sync_and_clears_id(self) -> None:
+        with patch("command_quiver.app.Gtk"), patch("command_quiver.app.Gdk"):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._sync_debounce_id = 5
+
+            with patch.object(app, "_run_sync_background") as mock_run:
+                ret = app._on_sync_debounce_fire()
+
+            assert app._sync_debounce_id == 0
+            mock_run.assert_called_once()
+            assert ret is False
+
+    def test_do_activate_creates_and_presents_sidebar(self) -> None:
+        with (
+            patch("command_quiver.app.Gtk"),
+            patch("command_quiver.app.Gdk"),
+            patch("command_quiver.app.SidebarPanel") as mock_sidebar_cls,
+        ):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._db = MagicMock()
+            app._settings = MagicMock()
+            app._sidebar = None
+
+            with patch.object(app, "add_window") as mock_add:
+                app.do_activate()
+
+            mock_sidebar_cls.assert_called_once()
+            mock_add.assert_called_once()
+            mock_sidebar_cls.return_value.present.assert_called_once()
