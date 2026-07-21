@@ -40,6 +40,8 @@ class Entry:
     created_at: str = ""
     updated_at: str = ""
     uuid: str = ""
+    use_count: int = 0  # Contatore d'uso locale (non sincronizzato)
+    last_used_at: str = ""  # Ultimo uso locale (non sincronizzato)
     section_name: str = ""  # Calcolato via JOIN, non persistito
 
 

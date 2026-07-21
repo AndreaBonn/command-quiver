@@ -24,6 +24,7 @@ class EntryRow(Gtk.Box):
         entry: Entry,
         on_edit: Callable[[Entry], None],
         on_move: Callable[[int, int], None] | None = None,
+        on_use: Callable[[int], None] | None = None,
         show_move: bool = False,
         is_first: bool = False,
         is_last: bool = False,
@@ -31,6 +32,7 @@ class EntryRow(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.entry = entry
         self._on_edit = on_edit
+        self._on_use = on_use
 
         self.set_margin_start(8)
         self.set_margin_end(8)
@@ -101,6 +103,8 @@ class EntryRow(Gtk.Box):
     def _on_copy(self, _button: Gtk.Button) -> None:
         """Copia il contenuto negli appunti con feedback visivo."""
         if copy_to_clipboard(self.entry.content):
+            if self._on_use:
+                self._on_use(self.entry.id)
             # Feedback visivo: cambia icona per 1.5 secondi
             self._copy_btn.set_icon_name("object-select-symbolic")
             self._copy_btn.add_css_class("copy-success")
@@ -116,6 +120,8 @@ class EntryRow(Gtk.Box):
         """Esegue il comando in gnome-terminal."""
         try:
             execute_in_terminal(self.entry.content)
+            if self._on_use:
+                self._on_use(self.entry.id)
         except TerminalNotFoundError as err:
             self._show_terminal_error(str(err))
 
@@ -139,10 +145,12 @@ class EntryListWidget(Gtk.Box):
         self,
         on_entry_edit: Callable[[Entry], None],
         on_move: Callable[[int, int], None] | None = None,
+        on_use: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self._on_entry_edit = on_entry_edit
         self._on_move = on_move
+        self._on_use = on_use
         self._entries: list[Entry] = []
         self._show_move = False
 
@@ -209,6 +217,7 @@ class EntryListWidget(Gtk.Box):
                 entry=entry,
                 on_edit=self._on_entry_edit,
                 on_move=self._on_move if show_move else None,
+                on_use=self._on_use,
                 show_move=show_move,
                 is_first=(i == 0),
                 is_last=(i == total - 1),

@@ -253,6 +253,7 @@ class EntryRepository:
         "chronological_desc": "e.created_at DESC",
         "chronological_asc": "e.created_at ASC",
         "personal": "e.personal_pos ASC, e.name ASC",
+        "usage": "e.use_count DESC, e.last_used_at DESC, e.name ASC",
     }
 
     def __init__(self, connection: sqlite3.Connection) -> None:
@@ -303,7 +304,7 @@ class EntryRepository:
             f"""
             SELECT e.id, e.name, e.content, e.section_id, e.type,
                    e.tags, e.personal_pos, e.created_at, e.updated_at,
-                   e.uuid,
+                   e.uuid, e.use_count, COALESCE(e.last_used_at, '') AS last_used_at,
                    COALESCE(s.name, 'Generale') AS section_name
             FROM entries e
             LEFT JOIN sections s ON s.id = e.section_id
@@ -321,7 +322,7 @@ class EntryRepository:
             """
             SELECT e.id, e.name, e.content, e.section_id, e.type,
                    e.tags, e.personal_pos, e.created_at, e.updated_at,
-                   e.uuid,
+                   e.uuid, e.use_count, COALESCE(e.last_used_at, '') AS last_used_at,
                    COALESCE(s.name, 'Generale') AS section_name
             FROM entries e
             LEFT JOIN sections s ON s.id = e.section_id
@@ -338,7 +339,7 @@ class EntryRepository:
             """
             SELECT e.id, e.name, e.content, e.section_id, e.type,
                    e.tags, e.personal_pos, e.created_at, e.updated_at,
-                   e.uuid,
+                   e.uuid, e.use_count, COALESCE(e.last_used_at, '') AS last_used_at,
                    COALESCE(s.name, 'Generale') AS section_name
             FROM entries e
             LEFT JOIN sections s ON s.id = e.section_id
@@ -348,6 +349,20 @@ class EntryRepository:
         )
         row = cursor.fetchone()
         return Entry(**dict(row)) if row else None
+
+    def bump_usage(self, entry_id: int) -> None:
+        """Registra un uso della voce: incrementa il contatore e l'ultimo uso.
+
+        Statistica locale al dispositivo, usata solo dall'ordinamento
+        "più usati". Non tocca ``updated_at`` di proposito: il merge del sync
+        è last-write-wins su ``updated_at``, quindi contare gli usi non deve
+        far apparire la voce come modificata né propagarsi cross-device.
+        """
+        self._conn.execute(
+            "UPDATE entries SET use_count = use_count + 1, last_used_at = ? WHERE id = ?",
+            (datetime.now().isoformat(), entry_id),
+        )
+        self._conn.commit()
 
     def create(self, data: EntryCreate) -> Entry:
         """Crea una nuova voce."""

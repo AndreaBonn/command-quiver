@@ -39,6 +39,7 @@ class SidebarPanel(Gtk.Window):
         "alpha_asc",
         "alpha_desc",
         "personal",
+        "usage",
     ]
 
     # Selettore lingua: codici e autonimi (mostrati uguali in ogni lingua)
@@ -118,6 +119,7 @@ class SidebarPanel(Gtk.Window):
         self._entry_list = EntryListWidget(
             on_entry_edit=self._on_entry_click,
             on_move=self._on_entry_move,
+            on_use=self._on_entry_used,
         )
         right_box.append(self._entry_list)
 
@@ -137,6 +139,7 @@ class SidebarPanel(Gtk.Window):
             t("sidebar.sort_alpha_asc"),
             t("sidebar.sort_alpha_desc"),
             t("sidebar.sort_personal"),
+            t("sidebar.sort_usage"),
         ]
         self._sort_dropdown = Gtk.DropDown()
         self._sort_dropdown.set_model(Gtk.StringList.new(sort_options))
@@ -149,6 +152,7 @@ class SidebarPanel(Gtk.Window):
             "alpha_asc": 2,
             "alpha_desc": 3,
             "personal": 4,
+            "usage": 5,
         }
         self._sort_dropdown.set_selected(sort_map.get(self._settings.sort_order, 0))
         self._sort_dropdown.connect("notify::selected", self._on_sort_changed)
@@ -202,6 +206,15 @@ class SidebarPanel(Gtk.Window):
             self._sync_status_label.set_label(t("sync.status_disabled"))
 
         main_box.append(self._sync_status_label)
+
+    def _on_entry_used(self, entry_id: int) -> None:
+        """Registra l'uso di una voce (copia/esecuzione) per il ranking locale.
+
+        Non forza il refresh: in modalità "Più usati" il nuovo ordine si applica
+        al prossimo ricaricamento, così la lista non si riordina sotto il cursore
+        mentre l'utente copia.
+        """
+        self._entry_repo.bump_usage(entry_id)
 
     # --- Refresh dati ---
 

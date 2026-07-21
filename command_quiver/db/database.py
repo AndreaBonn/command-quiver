@@ -72,6 +72,14 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         # Placeholder: migrazione v2 gestita da _migrate_v2() con ALTER singoli
         "",
     ),
+    (
+        3,
+        "contatori d'uso su entries per ranking locale",
+        """
+        ALTER TABLE entries ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE entries ADD COLUMN last_used_at DATETIME;
+        """,
+    ),
 ]
 
 
@@ -117,26 +125,44 @@ class Database:
         return self._connection
 
     def _connect(self, *, _allow_recreate: bool = True) -> None:
-        """Apre la connessione e configura SQLite per integrità e performance."""
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        """Apre la connessione principale (thread GTK) configurata."""
         try:
-            self._connection = sqlite3.connect(
-                str(self._db_path),
-                detect_types=sqlite3.PARSE_DECLTYPES,
-            )
-            self._connection.row_factory = sqlite3.Row
-            # Abilita foreign key, WAL mode per performance, timeout ragionevole
-            self._connection.execute("PRAGMA foreign_keys = ON")
-            self._connection.execute("PRAGMA journal_mode = WAL")
-            self._connection.execute("PRAGMA busy_timeout = 5000")
-            # Funzione per ricerca case-insensitive unicode (LIKE gestisce solo ASCII)
-            self._connection.create_function("UNICODE_LOWER", 1, str.casefold)
+            self._connection = self.create_connection()
             logger.info("Connessione database aperta: %s", self._db_path)
         except sqlite3.Error:
             if not _allow_recreate:
                 raise
             logger.exception("Errore apertura database, tentativo di ricreare")
             self._recreate()
+
+    def create_connection(self) -> sqlite3.Connection:
+        """Crea una nuova connessione SQLite configurata al file del database.
+
+        Ogni thread deve usare la propria connessione: SQLite vieta di
+        condividere una connessione tra thread diversi. La modalità WAL
+        (attivata qui) permette a letture e scritture su connessioni distinte
+        di coesistere sullo stesso file, così il sync in background può usare
+        una connessione dedicata senza interferire con il thread GTK.
+
+        Returns
+        -------
+        sqlite3.Connection
+            Connessione pronta all'uso (foreign key ON, WAL, row factory,
+            funzione UNICODE_LOWER registrata).
+        """
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(
+            str(self._db_path),
+            detect_types=sqlite3.PARSE_DECLTYPES,
+        )
+        connection.row_factory = sqlite3.Row
+        # Abilita foreign key, WAL mode per performance, timeout ragionevole
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA busy_timeout = 5000")
+        # Funzione per ricerca case-insensitive unicode (LIKE gestisce solo ASCII)
+        connection.create_function("UNICODE_LOWER", 1, str.casefold)
+        return connection
 
     def initialize(self) -> None:
         """Crea le tabelle e inserisce i dati di default se necessario."""
