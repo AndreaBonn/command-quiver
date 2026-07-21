@@ -33,6 +33,47 @@ logger = logging.getLogger(__name__)
 
 FORMAT_VERSION = 1
 
+# Messaggi azionabili per gli errori GitHub piu' comuni durante il sync.
+_NETWORK_ERROR_MESSAGE = "Impossibile raggiungere GitHub. Controlla la connessione di rete."
+_HTTP_ERROR_MESSAGES = {
+    401: (
+        "Token GitHub non valido o scaduto. "
+        "Aggiorna il token nelle impostazioni di sincronizzazione."
+    ),
+    403: (
+        "Accesso negato: permessi insufficienti sul repository "
+        "o limite di richieste GitHub raggiunto. Riprova piu' tardi."
+    ),
+    404: (
+        "Repository o percorso file non trovato. "
+        "Verifica owner e nome del repository nelle impostazioni."
+    ),
+    409: "Conflitto di versione durante il salvataggio su GitHub. Riprova il sync.",
+    422: ("Dati o percorso file non accettati da GitHub. Verifica il percorso del file di sync."),
+}
+
+
+def humanize_github_error(err: GitHubApiError) -> str:
+    """Traduce un errore GitHub in un messaggio comprensibile e azionabile.
+
+    Parameters
+    ----------
+    err : GitHubApiError
+        Errore sollevato dal client GitHub. ``status_code == 0`` indica un
+        errore di rete (nessuna risposta HTTP ricevuta).
+
+    Returns
+    -------
+    str
+        Messaggio in italiano orientato all'azione dell'utente.
+    """
+    if err.status_code == 0:
+        return _NETWORK_ERROR_MESSAGE
+    return _HTTP_ERROR_MESSAGES.get(
+        err.status_code,
+        f"Errore GitHub (codice {err.status_code}). Riprova piu' tardi.",
+    )
+
 
 @dataclass
 class SyncResult:
@@ -46,14 +87,22 @@ class SyncResult:
 
 
 class SyncEngine:
-    """Orchestrazione sync: export locale, merge con remoto, push/pull."""
+    """Orchestrazione sync: export locale, merge con remoto, push/pull.
+
+    I repository vengono creati all'inizio di ``sync()`` su una connessione
+    dedicata al thread che esegue il sync (vedi ``Database.create_connection``):
+    ``sync()`` gira in un thread daemon separato dal thread GTK e SQLite vieta
+    di condividere una connessione tra thread diversi.
+    """
+
+    # Creati in sync() sulla connessione dedicata al thread di sync.
+    _section_repo: SectionRepository
+    _entry_repo: EntryRepository
+    _tombstone_repo: TombstoneRepository
 
     def __init__(self, db: Database, settings: Settings) -> None:
         self._db = db
         self._settings = settings
-        self._section_repo = SectionRepository(db.connection)
-        self._entry_repo = EntryRepository(db.connection)
-        self._tombstone_repo = TombstoneRepository(db.connection)
 
     def _create_client(self) -> GitHubClient | None:
         """Crea il client GitHub se la configurazione è completa."""
@@ -68,6 +117,13 @@ class SyncEngine:
         client = self._create_client()
         if client is None:
             return SyncResult(success=False, message="Sync non configurato")
+
+        # Connessione dedicata: sync() gira in un thread separato dal thread GTK
+        # e SQLite vieta di riusare la connessione principale cross-thread.
+        connection = self._db.create_connection()
+        self._section_repo = SectionRepository(connection)
+        self._entry_repo = EntryRepository(connection)
+        self._tombstone_repo = TombstoneRepository(connection)
 
         try:
             # 1. Esporta stato locale
@@ -124,10 +180,12 @@ class SyncEngine:
 
         except GitHubApiError as err:
             logger.error("Sync fallito: %s", err)
-            return SyncResult(success=False, message=str(err))
+            return SyncResult(success=False, message=humanize_github_error(err))
         except (json.JSONDecodeError, KeyError, TypeError) as err:
             logger.error("Sync fallito (dati corrotti): %s", err)
             return SyncResult(success=False, message=f"Dati remoti corrotti: {err}")
+        finally:
+            connection.close()
 
     def _export_local(self) -> dict:
         """Esporta stato locale nel formato sync."""
