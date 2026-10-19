@@ -57,6 +57,14 @@ class RunConfirmDialog(Gtk.Window):
         self._remember = Gtk.CheckButton(label=t("run.dont_ask"))
         box.append(self._remember)
 
+        box.append(self._build_buttons())
+
+        self.set_default_widget(self._run_btn)
+        # Focus su Esegui: altrimenti la label selezionabile lo prende e seleziona tutto il comando
+        self.set_focus(self._run_btn)
+        self._setup_keyboard_shortcuts()
+
+    def _build_buttons(self) -> Gtk.Box:
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         buttons.set_halign(Gtk.Align.END)
         cancel = Gtk.Button(label=t("common.cancel"))
@@ -66,11 +74,9 @@ class RunConfirmDialog(Gtk.Window):
         self._run_btn.connect("clicked", lambda _: self.confirm())
         buttons.append(cancel)
         buttons.append(self._run_btn)
-        box.append(buttons)
+        return buttons
 
-        self.set_default_widget(self._run_btn)
-        # Focus su Esegui: altrimenti la label selezionabile lo prende e seleziona tutto il comando
-        self.set_focus(self._run_btn)
+    def _setup_keyboard_shortcuts(self) -> None:
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self._on_key_pressed)
         self.add_controller(keys)
