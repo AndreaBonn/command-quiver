@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "command-quiver"
 DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "settings.json"
 SYNC_TOKEN_PATH = DEFAULT_CONFIG_DIR / ".sync_token"
+_TOKEN_FILE_MODE = 0o600  # lettura e scrittura solo per il proprietario
 
 VALID_LANGUAGES = ("it", "en")
 # Larghezza in cui pannello sezioni (224 px) e lista stanno senza troncare i nomi
@@ -83,12 +84,20 @@ def load_settings(config_path: Path | None = None) -> Settings:
         return Settings()
 
     try:
+        # UnicodeDecodeError è un ValueError, come JSONDecodeError; OSError copre
+        # un path illeggibile (permessi, directory al posto del file)
         data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        logger.exception("File impostazioni illeggibile o corrotto, uso valori di default")
+        return Settings()
+    if not isinstance(data, dict):
+        logger.error("File impostazioni senza un oggetto JSON (%s), uso valori di default", path)
+        return Settings()
+    try:
         # Filtra solo i campi validi del dataclass
         valid_fields = {f.name for f in Settings.__dataclass_fields__.values() if f.init}
-        filtered = {k: v for k, v in data.items() if k in valid_fields}
-        return Settings(**filtered)
-    except (json.JSONDecodeError, TypeError):
+        return Settings(**{k: v for k, v in data.items() if k in valid_fields})
+    except TypeError:
         logger.exception("File impostazioni corrotto, uso valori di default")
         return Settings()
 
@@ -113,7 +122,7 @@ def load_sync_token() -> str:
         return ""
     try:
         return SYNC_TOKEN_PATH.read_text(encoding="utf-8").strip()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         logger.exception("Errore lettura token sync")
         return ""
 
@@ -121,8 +130,12 @@ def load_sync_token() -> str:
 def save_sync_token(token: str) -> None:
     """Salva il token GitHub in un file con permessi restrittivi (600)."""
     SYNC_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SYNC_TOKEN_PATH.write_text(token + "\n", encoding="utf-8")
-    os.chmod(SYNC_TOKEN_PATH, 0o600)
+    # Creato già 600: con write_text e chmod dopo, il file restava per un attimo
+    # leggibile coi permessi dell'umask. fchmod stringe un file già esistente.
+    fd = os.open(SYNC_TOKEN_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _TOKEN_FILE_MODE)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        os.fchmod(handle.fileno(), _TOKEN_FILE_MODE)
+        handle.write(token + "\n")
     logger.info("Token sync salvato: %s", SYNC_TOKEN_PATH)
 
 

@@ -102,6 +102,22 @@ class TestLoadSettings:
         s = load_settings(config_path=config_path)
         assert s.sort_order == "chronological_desc"
 
+    @pytest.mark.parametrize(
+        "content",
+        [b"[]", b'"testo"', b"\xff\xfe non utf-8", b'{"sort_order": "alpha_asc"} \xff'],
+        ids=["json-list", "json-string", "not-utf8", "valid-prefix-not-utf8"],
+    )
+    def test_unusable_file_returns_defaults(self, config_path: Path, content: bytes) -> None:
+        """Docstring: "se il file è corrotto restituisce i valori di default", senza crash."""
+        config_path.write_bytes(content)
+
+        assert load_settings(config_path=config_path) == Settings()
+
+    def test_unreadable_path_returns_defaults(self, config_path: Path) -> None:
+        config_path.mkdir()
+
+        assert load_settings(config_path=config_path) == Settings()
+
     def test_extra_fields_ignored(self, config_path: Path) -> None:
         config_path.write_text(
             json.dumps(
@@ -210,6 +226,35 @@ class TestSyncToken:
 
         assert stat.S_IMODE(os.stat(token_path).st_mode) == 0o600
 
+    def test_save_sync_token_is_created_owner_only(
+        self, token_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Il file nasce già 600: nessun istante in cui il token è leggibile da altri.
+
+        Con chmod dopo la scrittura il file esisteva per un attimo coi permessi
+        dell'umask. Qui chmod non fa nulla: il 600 deve venire dalla creazione.
+        """
+        monkeypatch.setattr(settings_module.os, "chmod", lambda *_a, **_k: None)
+        monkeypatch.setattr(settings_module.os, "fchmod", lambda *_a, **_k: None)
+        old_umask = os.umask(0o000)
+        try:
+            save_sync_token("ghp_abc123")
+        finally:
+            os.umask(old_umask)
+
+        assert stat.S_IMODE(os.stat(token_path).st_mode) == 0o600
+        assert load_sync_token() == "ghp_abc123"
+
+    def test_save_sync_token_tightens_an_existing_readable_file(self, token_path: Path) -> None:
+        token_path.parent.mkdir(parents=True)
+        token_path.write_text("vecchio\n", encoding="utf-8")
+        token_path.chmod(0o644)
+
+        save_sync_token("nuovo")
+
+        assert stat.S_IMODE(os.stat(token_path).st_mode) == 0o600
+        assert load_sync_token() == "nuovo"
+
     def test_save_sync_token_creates_missing_parent_directory(self, token_path: Path) -> None:
         assert not token_path.parent.exists()
 
@@ -235,6 +280,12 @@ class TestSyncToken:
     def test_load_sync_token_unreadable_path_returns_empty_string(self, token_path: Path) -> None:
         # Una directory al posto del file fa fallire la lettura con OSError
         token_path.mkdir(parents=True)
+
+        assert load_sync_token() == ""
+
+    def test_load_sync_token_not_utf8_returns_empty_string(self, token_path: Path) -> None:
+        token_path.parent.mkdir(parents=True)
+        token_path.write_bytes(b"\xff\xfe")
 
         assert load_sync_token() == ""
 
