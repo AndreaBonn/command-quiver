@@ -97,6 +97,22 @@ def test_migrate_v2_schema_enforces_unique_uuid(connection: sqlite3.Connection) 
     assert connection.execute("SELECT uuid FROM sections").fetchone()[0] == "unique"
 
 
+def test_migrate_v2_entries_duplicate_uuid_raises_integrity_error(
+    connection: sqlite3.Connection,
+) -> None:
+    connection.executescript(
+        "CREATE TABLE entries (id INTEGER PRIMARY KEY);"
+        "CREATE TABLE sections (id INTEGER PRIMARY KEY);"
+    )
+    migrate_v2(connection)
+    connection.execute("INSERT INTO entries (uuid) VALUES ('unique-entry')")
+
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+        connection.execute("INSERT INTO entries (uuid) VALUES ('unique-entry')")
+
+    assert [row[0] for row in connection.execute("SELECT uuid FROM entries")] == ["unique-entry"]
+
+
 def test_populate_uuids_schema_without_uuid_preserves_rows(connection: sqlite3.Connection) -> None:
     connection.executescript("CREATE TABLE entries (id INTEGER); INSERT INTO entries VALUES (7);")
 

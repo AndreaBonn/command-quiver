@@ -1,8 +1,10 @@
 """Test per il modulo database: schema, inizializzazione, ricreazione."""
 
+import functools
 import logging
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 from uuid import UUID
 
@@ -194,19 +196,50 @@ class TestDatabaseConnection:
         db2.close()
 
 
+def test_connect_locked_database_propagates_error_and_preserves_library(
+    db: Database, db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Senza attesa sul lock: col timeout predefinito di sqlite3 (5 s) il test durava 5 s
+    monkeypatch.setattr(sqlite3, "connect", functools.partial(sqlite3.connect, timeout=0))
+    db.connection.execute("INSERT INTO sections (name) VALUES ('Preserved library')")
+    db.connection.commit()
+    db.close()
+    opening = Database(db_path=db_path)
+
+    # Il lock esclusivo impedisce il PRAGMA WAL durante l'apertura, prima dello schema.
+    with closing(sqlite3.connect(db_path)) as locker:
+        locker.execute("PRAGMA journal_mode = DELETE")
+        locker.execute("BEGIN EXCLUSIVE")
+        try:
+            with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+                opening.connection.execute("SELECT 1")
+        finally:
+            locker.rollback()
+            opening.close()
+
+    with closing(db.create_connection()) as reader:
+        saved = reader.execute(
+            "SELECT name FROM sections WHERE name = 'Preserved library'"
+        ).fetchall()
+    assert ([row[0] for row in saved], list(db_path.parent.glob("*.db.bak.*"))) == (
+        ["Preserved library"],
+        [],
+    )
+
+
 class TestMigrationSystem:
     """Test sistema di migrazioni incrementali."""
 
     def test_user_version_set_after_initialize(self, db: Database) -> None:
         version = db.connection.execute("PRAGMA user_version").fetchone()[0]
-        assert version >= 1
+        assert version == 3
 
     def test_migrations_idempotent(self, db: Database) -> None:
         """Chiamare _migrate() più volte non causa errori."""
         migrate(db.connection)
         migrate(db.connection)
         version = db.connection.execute("PRAGMA user_version").fetchone()[0]
-        assert version >= 1
+        assert version == 3
 
     def test_legacy_db_detected_and_migrated(self, tmp_path: Path) -> None:
         """DB con is_default ma user_version=0 viene rilevato come v1."""
@@ -250,7 +283,7 @@ class TestMigrationSystem:
         db.initialize()
 
         version = db.connection.execute("PRAGMA user_version").fetchone()[0]
-        assert version >= 2
+        assert version == 3
         db.close()
 
 

@@ -1,6 +1,7 @@
 """Test per i repository CRUD di sezioni e voci."""
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -279,9 +280,16 @@ def test_delete_section_tombstone_failure_keeps_section_and_entries(
     with pytest.raises(sqlite3.IntegrityError):
         sections.delete(section.id)
 
-    db.connection.rollback()
-    assert sections.get_by_id(section.id) is not None
-    assert entries.get_by_id(entry.id).section_id == section.id
+    # Il commit di una normale scrittura successiva espone eventuali modifiche parziali.
+    following = sections.create(name="Following")
+    with closing(db.create_connection()) as reader:
+        stored_sections = SectionRepository(connection=reader)
+        stored_entry = EntryRepository(connection=reader).get_by_id(entry_id=entry.id)
+        assert (
+            stored_sections.get_by_id(section_id=section.id).name,
+            stored_entry.section_id,
+            stored_sections.get_by_id(section_id=following.id).name,
+        ) == ("Lavoro", section.id, "Following")
 
 
 def test_create_section_returns_stored_created_at(sections: SectionRepository) -> None:
@@ -315,3 +323,31 @@ def test_get_by_name_unknown_returns_none(sections: SectionRepository) -> None:
     sections.create(name="Lavoro")
 
     assert sections.get_by_name("Svago") is None
+
+
+def test_rename_section_second_connection_reads_new_name(
+    sections: SectionRepository, db: Database
+) -> None:
+    created = sections.create(name="Before")
+
+    sections.rename(section_id=created.id, new_name="After")
+
+    with closing(db.create_connection()) as reader:
+        stored = SectionRepository(connection=reader).get_by_id(section_id=created.id)
+    assert stored.name == "After"
+
+
+def test_exists_accented_name_ignores_case(sections: SectionRepository) -> None:
+    sections.create(name="Élite")
+
+    found = sections.exists(name="élite")
+
+    assert found is True
+
+
+def test_get_by_name_accented_name_ignores_case(sections: SectionRepository) -> None:
+    created = sections.create(name="Élite")
+
+    found = sections.get_by_name(name="élite")
+
+    assert found.id == created.id

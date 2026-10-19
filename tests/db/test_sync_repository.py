@@ -1,5 +1,7 @@
 """Test per i repository CRUD di sezioni e voci."""
 
+from contextlib import closing
+
 import pytest
 
 from command_quiver.db.database import Database
@@ -380,3 +382,32 @@ def test_create_from_sync_entry_without_timestamps_generates_them(
 
     assert result.created_at
     assert result.updated_at
+
+
+def test_update_entry_from_sync_preserves_local_usage_statistics(
+    sync_repo: SyncRepository, entries: EntryRepository, db: Database
+) -> None:
+    created = entries.create(data=EntryCreate(name="Before", content="old"))
+    db.connection.execute(
+        "UPDATE entries SET use_count = 7, last_used_at = ? WHERE id = ?",
+        ("2025-06-01T12:00:00+00:00", created.id),
+    )
+    db.connection.commit()
+
+    sync_repo.update_entry_from_sync(
+        data=SyncedEntry(
+            name="After",
+            content="remote",
+            entry_uuid=created.uuid,
+            section_id=None,
+            updated_at="2025-07-01T12:00:00+00:00",
+        )
+    )
+
+    with closing(db.create_connection()) as reader:
+        stored = EntryRepository(connection=reader).get_by_id(entry_id=created.id)
+    assert (stored.name, stored.use_count, stored.last_used_at) == (
+        "After",
+        7,
+        "2025-06-01T12:00:00+00:00",
+    )

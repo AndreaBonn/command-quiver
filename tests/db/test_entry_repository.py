@@ -1,6 +1,7 @@
 """Test per i repository CRUD di sezioni e voci."""
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -286,8 +287,14 @@ def test_delete_entry_tombstone_failure_keeps_entry(entries: EntryRepository, db
     with pytest.raises(sqlite3.IntegrityError):
         entries.delete(created.id)
 
-    db.connection.rollback()
-    assert entries.get_by_id(created.id) is not None
+    # Un commit successivo non deve rendere definitiva una cancellazione fallita.
+    following = entries.create(data=EntryCreate(name="Following", content="saved"))
+    with closing(db.create_connection()) as reader:
+        stored = EntryRepository(connection=reader)
+        assert [stored.get_by_id(entry_id=item.id) for item in (created, following)] == [
+            created,
+            following,
+        ]
 
 
 def test_delete_entry_without_failure_removes_entry_and_records_tombstone(
@@ -318,3 +325,124 @@ class TestExportImport:
         assert len(exported) == 2
         assert exported[0]["name"] == "cmd1"
         assert exported[0]["section_name"] == "Shell Commands"
+
+
+def test_create_entry_second_connection_reads_committed_entry(
+    entries: EntryRepository, db: Database
+) -> None:
+    created = entries.create(data=EntryCreate(name="Saved", content="echo saved", tags="work"))
+
+    with closing(db.create_connection()) as reader:
+        stored = EntryRepository(connection=reader).get_by_id(entry_id=created.id)
+
+    assert stored == created
+
+
+def test_update_entry_second_connection_reads_new_tags_and_section(
+    entries: EntryRepository, sections: SectionRepository, db: Database
+) -> None:
+    source, target = sections.get_all()[:2]
+    created = entries.create(
+        data=EntryCreate(name="Before", content="old", section_id=source.id, tags="old")
+    )
+
+    entries.update(
+        data=EntryUpdate(
+            id=created.id, name="After", content="new", section_id=target.id, tags="new,work"
+        )
+    )
+
+    with closing(db.create_connection()) as reader:
+        stored = EntryRepository(connection=reader).get_by_id(entry_id=created.id)
+    assert (stored.name, stored.content, stored.tags, stored.section_id) == (
+        "After",
+        "new",
+        "new,work",
+        target.id,
+    )
+
+
+def test_bump_usage_second_connection_reads_increment_and_timestamp(
+    entries: EntryRepository, db: Database
+) -> None:
+    created = entries.create(data=EntryCreate(name="Used", content="text"))
+
+    entries.bump_usage(entry_id=created.id)
+    entries.bump_usage(entry_id=created.id)
+
+    with closing(db.create_connection()) as reader:
+        stored = EntryRepository(connection=reader).get_by_id(entry_id=created.id)
+    assert (stored.use_count, _is_recent_utc(stored.last_used_at)) == (2, True)
+
+
+def test_update_position_second_connection_reads_new_position(
+    entries: EntryRepository, db: Database
+) -> None:
+    created = entries.create(data=EntryCreate(name="Moved", content="text"))
+
+    entries.update_position(entry_id=created.id, new_position=42)
+
+    with closing(db.create_connection()) as reader:
+        stored = EntryRepository(connection=reader).get_by_id(entry_id=created.id)
+    assert stored.personal_pos == 42
+
+
+@pytest.mark.parametrize("field", ["content", "tags"])
+def test_search_word_only_in_content_or_tags_returns_matching_entry(
+    entries: EntryRepository, field: str
+) -> None:
+    data = {"name": "Target", "content": "ordinary", "tags": "work"}
+    data[field] = "needle"
+    target = entries.create(data=EntryCreate(**data))
+    entries.create(data=EntryCreate(name="Other", content="ordinary", tags="work"))
+
+    found = entries.get_all(search="needle")
+
+    assert [entry.id for entry in found] == [target.id]
+
+
+@pytest.mark.parametrize(
+    ("sort_order", "expected"),
+    [
+        ("chronological_desc", ["Bravo", "Zulu", "Alpha"]),
+        ("chronological_asc", ["Alpha", "Zulu", "Bravo"]),
+        ("personal", ["Zulu", "Bravo", "Alpha"]),
+    ],
+)
+def test_get_all_distinct_dates_and_positions_returns_requested_order(
+    entries: EntryRepository, db: Database, sort_order: str, expected: list[str]
+) -> None:
+    for name, created_at, position in [
+        ("Zulu", "2025-02-01T00:00:00+00:00", 0),
+        ("Alpha", "2025-01-01T00:00:00+00:00", 2),
+        ("Bravo", "2025-03-01T00:00:00+00:00", 1),
+    ]:
+        created = entries.create(data=EntryCreate(name=name, content="text"))
+        db.connection.execute(
+            "UPDATE entries SET created_at = ?, personal_pos = ? WHERE id = ?",
+            (created_at, position, created.id),
+        )
+        db.connection.commit()
+
+    found = entries.get_all(sort_order=sort_order)
+
+    assert [entry.name for entry in found] == expected
+
+
+def test_get_all_equal_usage_returns_most_recently_used_first(
+    entries: EntryRepository, db: Database
+) -> None:
+    for name, last_used_at in [
+        ("Alpha", "2025-01-01T00:00:00+00:00"),
+        ("Zulu", "2025-02-01T00:00:00+00:00"),
+    ]:
+        created = entries.create(data=EntryCreate(name=name, content="text"))
+        db.connection.execute(
+            "UPDATE entries SET use_count = 7, last_used_at = ? WHERE id = ?",
+            (last_used_at, created.id),
+        )
+        db.connection.commit()
+
+    found = entries.get_all(sort_order="usage")
+
+    assert [entry.name for entry in found] == ["Zulu", "Alpha"]
