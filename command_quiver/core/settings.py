@@ -13,12 +13,17 @@ DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "settings.json"
 SYNC_TOKEN_PATH = DEFAULT_CONFIG_DIR / ".sync_token"
 
 VALID_LANGUAGES = ("it", "en")
+# Larghezza in cui pannello sezioni (224 px) e lista stanno senza troncare i nomi
+DEFAULT_WINDOW_WIDTH = 640
+# Sotto questa larghezza la lista resta troppo stretta e i nomi si troncano
+MIN_WINDOW_WIDTH = 600
 VALID_SORT_ORDERS = (
     "alpha_asc",
     "alpha_desc",
     "chronological_asc",
     "chronological_desc",
     "personal",
+    "usage",
 )
 
 
@@ -40,20 +45,24 @@ class Settings:
 
     sort_order: str = "chronological_desc"
     last_section_id: int | None = None
-    window_width: int = 520
+    window_width: int = DEFAULT_WINDOW_WIDTH
     window_height: int = 600
     theme: str = "auto"
     language: str = "it"
     sync: SyncSettings = field(default_factory=SyncSettings)
+    # UUID delle voci che l'utente esegue senza conferma ("non chiedere più")
+    skip_run_confirm: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Valida i valori dopo l'inizializzazione."""
+        if not isinstance(self.skip_run_confirm, list):
+            self.skip_run_confirm = []
         if self.sort_order not in VALID_SORT_ORDERS:
             self.sort_order = "chronological_desc"
         if self.language not in VALID_LANGUAGES:
             self.language = "it"
-        if self.window_width < 300:
-            self.window_width = 520
+        if self.window_width < MIN_WINDOW_WIDTH:
+            self.window_width = DEFAULT_WINDOW_WIDTH
         if self.window_height < 300:
             self.window_height = 600
         # Converte dict in SyncSettings se caricato da JSON
