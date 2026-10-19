@@ -40,19 +40,21 @@ class TestSearchDebounce:
         assert wait_until(lambda: received != [])
         assert received == ["doc"]
 
-    def test_cancel_drops_the_pending_search(self, gtk_init) -> None:
+    def test_cancel_right_after_typing_drops_the_search(self, gtk_init) -> None:
+        """Regressione: annullare subito dopo un tasto non deve lasciare una ricerca in coda.
+
+        Col ritardo interno di "search-changed" il debounce si riarmava dopo il cancel e
+        la ricerca partiva su una finestra già chiusa (cambio lingua, fine test).
+        """
         from command_quiver.ui.search_bar import _SEARCH_DEBOUNCE_MS, SearchBar
 
         received: list[str] = []
         bar = SearchBar(sort_order="alpha_asc", on_search=received.append)
         bar.entry.set_text("docker")
-        # Il GtkSearchEntry emette "search-changed" dopo il suo ritardo interno: la
-        # ricerca è "in attesa" (debounce armato) solo da lì in poi.
-        run_loop_for(bar.entry.get_search_delay() + 60)
 
         bar.cancel()
 
-        run_loop_for(_SEARCH_DEBOUNCE_MS + 200)
+        run_loop_for(bar.entry.get_search_delay() + _SEARCH_DEBOUNCE_MS + 200)
         assert received == []
 
     def test_search_still_works_after_a_cancel(self, gtk_init) -> None:

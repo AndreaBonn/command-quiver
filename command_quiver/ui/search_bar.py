@@ -42,7 +42,9 @@ class SearchBar(Gtk.Box):
         self.entry = Gtk.SearchEntry(placeholder_text=t("sidebar.search_placeholder"), hexpand=True)
         # Esc dentro il campo lo svuota
         self.entry.connect("stop-search", lambda entry: entry.set_text(""))
-        self.entry.connect("search-changed", self._on_changed)
+        # "changed" e non "search-changed": quest'ultimo ha un suo ritardo interno, che
+        # sommato al debounce lo riarmava anche dopo cancel(). Il debounce resta uno solo.
+        self.entry.connect("changed", self._on_changed)
         self.append(self.entry)
 
         self.sort_dropdown = Gtk.DropDown(tooltip_text=t("sidebar.sort_tooltip"))
@@ -61,7 +63,7 @@ class SearchBar(Gtk.Box):
             GLib.source_remove(self._debounce_id)
             self._debounce_id = 0
 
-    def _on_changed(self, _entry: Gtk.SearchEntry) -> None:
+    def _on_changed(self, _entry: Gtk.Editable) -> None:
         self.cancel()
         self._debounce_id = GLib.timeout_add(_SEARCH_DEBOUNCE_MS, self._fire)
 
