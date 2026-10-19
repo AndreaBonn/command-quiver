@@ -16,8 +16,15 @@ command_quiver/
 ├── main.py          # Entry point, logging, --version flag
 ├── app.py           # GtkApplication lifecycle, sync, cambio lingua
 ├── db/
-│   ├── database.py  # SQLite, schema, migration system (PRAGMA user_version), auto-backup
-│   └── queries.py   # Repository CRUD, export/import JSON, paginazione
+│   ├── database.py           # Connessione SQLite: apertura, init, ricreazione, chiusura
+│   ├── schema.py             # DDL, seed, migrazioni (PRAGMA user_version), uuid
+│   ├── backup.py             # Backup automatico ogni 5 avvii, max 3 copie
+│   ├── models.py             # Dataclass Section, Entry, EntryCreate/Update, SyncedEntry
+│   ├── section_repository.py # Sezioni per id (UI)
+│   ├── entry_repository.py   # Voci per id (UI): lista, ricerca, ordinamento, paginazione
+│   ├── tombstone_repository.py # Tombstone del sync, scritte nella transazione della delete
+│   ├── sync_repository.py    # Operazioni per uuid usate dal sync
+│   └── entry_import.py       # Import JSON della libreria (normalizzazione pura)
 ├── core/
 │   ├── clipboard.py      # Copia negli appunti via GDK4
 │   ├── executor.py       # Esecuzione comandi in gnome-terminal (shlex.quote)
@@ -29,7 +36,9 @@ command_quiver/
 │   ├── repo_ref.py       # Parsing "utente/repo" o URL GitHub (campo unico)
 │   ├── samples.py        # Voci di esempio del primo avvio (it/en)
 │   ├── settings.py       # Config JSON persistente + SyncSettings + token management
-│   ├── sync_engine.py    # Sync engine: export, merge (last-write-wins), push/pull
+│   ├── sync_engine.py    # Sync: client, export dal DB, esecuzione del piano, push/pull
+│   ├── sync_merge.py     # Regole pure del sync: merge LWW, tombstone, piano del pull
+│   ├── timestamps.py     # Timestamp confrontabili fra formati storici e fusi
 │   └── sync_status.py    # Testo dello stato sync (mai "OK" prima di un esito reale)
 ├── ui/
 │   ├── sidebar.py        # Finestra principale: compone i widget sotto
