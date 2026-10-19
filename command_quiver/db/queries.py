@@ -228,20 +228,20 @@ class SectionRepository:
         section = self.get_by_id(section_id)
         section_uuid = section.uuid if section else ""
 
-        # Sposta le voci nella sezione Generale
-        self._conn.execute(
-            "UPDATE entries SET section_id = ? WHERE section_id = ?",
-            (generale_id, section_id),
-        )
-        cursor = self._conn.execute(
-            "DELETE FROM sections WHERE id = ?",
-            (section_id,),
-        )
-        self._conn.commit()
-
-        if cursor.rowcount > 0 and section_uuid:
-            self._add_tombstone(uuid=section_uuid, entity_type="section")
-            logger.info("Sezione eliminata (id=%d), voci spostate in Generale", section_id)
+        # Una transazione sola: senza tombstone il sync ricreerebbe la sezione (B8)
+        with self._conn:
+            # Sposta le voci nella sezione Generale
+            self._conn.execute(
+                "UPDATE entries SET section_id = ? WHERE section_id = ?",
+                (generale_id, section_id),
+            )
+            cursor = self._conn.execute(
+                "DELETE FROM sections WHERE id = ?",
+                (section_id,),
+            )
+            if cursor.rowcount > 0 and section_uuid:
+                self._add_tombstone(uuid=section_uuid, entity_type="section")
+                logger.info("Sezione eliminata (id=%d), voci spostate in Generale", section_id)
 
         return cursor.rowcount > 0
 
@@ -253,13 +253,12 @@ class SectionRepository:
         return self.delete(section.id)
 
     def _add_tombstone(self, uuid: str, entity_type: str) -> None:
-        """Registra una tombstone per il sync."""
+        """Registra una tombstone per il sync, nella transazione del chiamante."""
         self._conn.execute(
             "INSERT OR REPLACE INTO sync_tombstones (uuid, entity_type, deleted_at) "
             "VALUES (?, ?, ?)",
             (uuid, entity_type, utc_now_iso()),
         )
-        self._conn.commit()
 
 
 # --- Repository Voci ---
@@ -510,16 +509,17 @@ class EntryRepository:
         entry = self.get_by_id(entry_id)
         entry_uuid = entry.uuid if entry else ""
 
-        cursor = self._conn.execute(
-            "DELETE FROM entries WHERE id = ?",
-            (entry_id,),
-        )
-        self._conn.commit()
-        deleted = cursor.rowcount > 0
+        # Una transazione sola: senza tombstone il sync ricreerebbe la voce (B8)
+        with self._conn:
+            cursor = self._conn.execute(
+                "DELETE FROM entries WHERE id = ?",
+                (entry_id,),
+            )
+            deleted = cursor.rowcount > 0
+            if deleted and entry_uuid:
+                self._add_tombstone(uuid=entry_uuid, entity_type="entry")
 
         if deleted:
-            if entry_uuid:
-                self._add_tombstone(uuid=entry_uuid, entity_type="entry")
             logger.info("Voce eliminata (id=%d)", entry_id)
 
         return deleted
@@ -631,13 +631,12 @@ class EntryRepository:
         return imported
 
     def _add_tombstone(self, uuid: str, entity_type: str) -> None:
-        """Registra una tombstone per il sync."""
+        """Registra una tombstone per il sync, nella transazione del chiamante."""
         self._conn.execute(
             "INSERT OR REPLACE INTO sync_tombstones (uuid, entity_type, deleted_at) "
             "VALUES (?, ?, ?)",
             (uuid, entity_type, utc_now_iso()),
         )
-        self._conn.commit()
 
 
 # --- Tombstone Repository ---

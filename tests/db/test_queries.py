@@ -1,5 +1,6 @@
 """Test per i repository CRUD di sezioni e voci."""
 
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -1141,3 +1142,55 @@ def test_delete_entry_writes_utc_tombstone(entries: EntryRepository, db: Databas
 
     tombstone = TombstoneRepository(db.connection).get_all()[0]
     assert _is_recent_utc(tombstone["deleted_at"])
+
+
+# --- Cancellazione e tombstone nella stessa transazione (B8) ---
+
+
+@pytest.fixture
+def failing_tombstones(db: Database) -> None:
+    """La scrittura della tombstone fallisce, come per un errore di disco a metà."""
+    db.connection.execute(
+        "CREATE TRIGGER fail_tombstone BEFORE INSERT ON sync_tombstones "
+        "BEGIN SELECT RAISE(ABORT, 'disco pieno'); END"
+    )
+    db.connection.commit()
+
+
+@pytest.mark.usefixtures("failing_tombstones")
+def test_delete_entry_tombstone_failure_keeps_entry(entries: EntryRepository, db: Database) -> None:
+    """Regressione B8: senza tombstone la voce non sparisce, altrimenti il sync la ricrea."""
+    created = entries.create(EntryCreate(name="e", content="c"))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        entries.delete(created.id)
+
+    db.connection.rollback()
+    assert entries.get_by_id(created.id) is not None
+
+
+@pytest.mark.usefixtures("failing_tombstones")
+def test_delete_section_tombstone_failure_keeps_section_and_entries(
+    sections: SectionRepository, entries: EntryRepository, db: Database
+) -> None:
+    section = sections.create(name="Lavoro")
+    entry = entries.create(EntryCreate(name="e", content="c", section_id=section.id))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        sections.delete(section.id)
+
+    db.connection.rollback()
+    assert sections.get_by_id(section.id) is not None
+    assert entries.get_by_id(entry.id).section_id == section.id
+
+
+def test_delete_entry_without_failure_removes_entry_and_records_tombstone(
+    entries: EntryRepository, db: Database
+) -> None:
+    """Positivo appaiato di B8: senza errori voce rimossa e tombstone presente."""
+    created = entries.create(EntryCreate(name="e", content="c"))
+
+    entries.delete(created.id)
+
+    assert entries.get_by_id(created.id) is None
+    assert [t["uuid"] for t in TombstoneRepository(db.connection).get_all()] == [created.uuid]
