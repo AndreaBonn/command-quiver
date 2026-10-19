@@ -22,14 +22,23 @@ def auto_backup(connection: sqlite3.Connection, db_path: Path) -> None:
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     backup_path = db_path.parent / f"vault{_BACKUP_SUFFIX}.{timestamp}"
     try:
-        backup_conn = sqlite3.connect(str(backup_path))
-        connection.backup(backup_conn)
-        backup_conn.close()
-        logger.info("Backup automatico creato: %s", backup_path.name)
+        _copy_database(source=connection, target=backup_path)
     except sqlite3.Error:
         logger.exception("Errore durante backup automatico")
+        # Una copia incompleta conterebbe fra le ultime N, scalzandone una buona
+        backup_path.unlink(missing_ok=True)
         return
+    logger.info("Backup automatico creato: %s", backup_path.name)
     _prune_backups(db_path.parent)
+
+
+def _copy_database(source: sqlite3.Connection, target: Path) -> None:
+    """Copia il database in ``target``, chiudendo la connessione di destinazione anche su errore."""
+    target_conn = sqlite3.connect(str(target))
+    try:
+        source.backup(target_conn)
+    finally:
+        target_conn.close()
 
 
 def _increment_counter(counter_file: Path) -> int | None:

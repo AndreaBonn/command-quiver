@@ -105,3 +105,21 @@ def test_auto_backup_successful_prune_removes_oldest_without_warning(
 
     assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
     assert not oldest.exists()
+
+
+class _FailingConnection:
+    """Connessione la cui copia di backup fallisce a metà."""
+
+    def backup(self, target: sqlite3.Connection) -> None:
+        target.execute("CREATE TABLE half (x)")
+        raise sqlite3.OperationalError("disk I/O error")
+
+
+def test_auto_backup_failure_leaves_no_partial_copy(tmp_path: Path) -> None:
+    """Una copia incompleta conterebbe fra le tre conservate, scalzandone una buona."""
+    (tmp_path / "vault.db").touch()
+    (tmp_path / ".backup_counter").write_text("4")
+
+    auto_backup(_FailingConnection(), db_path=tmp_path / "vault.db")
+
+    assert list(tmp_path.glob("vault.auto.bak.*")) == []
