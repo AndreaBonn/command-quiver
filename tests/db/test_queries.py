@@ -1,6 +1,6 @@
 """Test per i repository CRUD di sezioni e voci."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -1090,3 +1090,54 @@ def test_adopt_uuid_replaces_identity_and_keeps_entries(
     assert sections.get_by_uuid("remote-uuid").id == section.id
     assert sections.get_by_uuid(section.uuid) is None
     assert entries.get_by_id(entry.id).section_id == section.id
+
+
+# --- Formato unico dei timestamp (B2) ---
+
+
+def _is_recent_utc(value: str) -> bool:
+    moment = datetime.fromisoformat(value)
+    return moment.utcoffset() == timedelta(0) and (
+        datetime.now(timezone.utc) - moment < timedelta(minutes=1)
+    )
+
+
+def test_create_entry_writes_utc_timestamps(entries: EntryRepository) -> None:
+    """Regressione B2: la voce nuova non usa più il formato di CURRENT_TIMESTAMP."""
+    created = entries.create(EntryCreate(name="e", content="c"))
+
+    stored = entries.get_by_id(created.id)
+
+    assert _is_recent_utc(stored.created_at)
+    assert _is_recent_utc(stored.updated_at)
+
+
+def test_update_entry_writes_utc_timestamp(entries: EntryRepository) -> None:
+    created = entries.create(EntryCreate(name="e", content="c"))
+
+    updated = entries.update(EntryUpdate(id=created.id, name="e2", content="c2"))
+
+    assert _is_recent_utc(updated.updated_at)
+
+
+def test_create_section_writes_utc_timestamp(sections: SectionRepository) -> None:
+    sections.create(name="Lavoro")
+
+    assert _is_recent_utc(sections.get_by_name("Lavoro").updated_at)
+
+
+def test_rename_section_writes_utc_timestamp(sections: SectionRepository) -> None:
+    section = sections.create(name="Lavoro")
+
+    sections.rename(section_id=section.id, new_name="Studio")
+
+    assert _is_recent_utc(sections.get_by_id(section.id).updated_at)
+
+
+def test_delete_entry_writes_utc_tombstone(entries: EntryRepository, db: Database) -> None:
+    created = entries.create(EntryCreate(name="e", content="c"))
+
+    entries.delete(created.id)
+
+    tombstone = TombstoneRepository(db.connection).get_all()[0]
+    assert _is_recent_utc(tombstone["deleted_at"])

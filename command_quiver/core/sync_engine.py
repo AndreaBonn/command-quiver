@@ -22,6 +22,7 @@ from command_quiver.core.settings import (
     load_sync_token,
     save_settings,
 )
+from command_quiver.core.timestamps import parse_timestamp, utc_now_iso
 from command_quiver.db.database import Database
 from command_quiver.db.queries import (
     EntryRepository,
@@ -210,7 +211,7 @@ class SyncEngine:
 
         return {
             "format_version": FORMAT_VERSION,
-            "last_modified": datetime.now().isoformat(),
+            "last_modified": utc_now_iso(),
             "sections": [
                 {
                     "uuid": s.uuid,
@@ -254,7 +255,7 @@ class SyncEngine:
 
         return {
             "format_version": FORMAT_VERSION,
-            "last_modified": datetime.now().isoformat(),
+            "last_modified": utc_now_iso(),
             "sections": list(merged_sections.values()),
             "entries": list(merged_entries.values()),
             "tombstones": list(all_tombstones.values()),
@@ -266,7 +267,9 @@ class SyncEngine:
         merged: dict[str, dict] = {}
         for tombstone in local_state.get("tombstones", []) + remote_state.get("tombstones", []):
             uid = tombstone["uuid"]
-            if uid not in merged or tombstone["deleted_at"] > merged[uid]["deleted_at"]:
+            if uid not in merged or parse_timestamp(tombstone["deleted_at"]) > parse_timestamp(
+                merged[uid]["deleted_at"]
+            ):
                 merged[uid] = tombstone
         return merged
 
@@ -278,7 +281,7 @@ class SyncEngine:
         """
         if tombstone is None:
             return False
-        return tombstone["deleted_at"] > entity.get("updated_at", "")
+        return parse_timestamp(tombstone["deleted_at"]) > parse_timestamp(entity.get("updated_at"))
 
     def _merge_entities(
         self,
@@ -306,7 +309,8 @@ class SyncEngine:
                 # Conflitto: vince il più recente
                 local_time = local_ent.get("updated_at", "")
                 remote_time = remote_ent.get("updated_at", "")
-                merged[uid] = local_ent if local_time >= remote_time else remote_ent
+                is_local_newer = parse_timestamp(local_time) >= parse_timestamp(remote_time)
+                merged[uid] = local_ent if is_local_newer else remote_ent
             elif local_ent:
                 merged[uid] = local_ent
             elif remote_ent:
@@ -378,7 +382,7 @@ class SyncEngine:
                     section_uuid=uid,
                     name=local_ent["name"],
                     icon=local_ent["icon"],
-                    updated_at=datetime.now().isoformat(),
+                    updated_at=utc_now_iso(),
                 )
                 continue
             self._tombstone_repo.add(
@@ -398,7 +402,7 @@ class SyncEngine:
                 local_sec = local_sections[uid]
                 remote_time = remote_sec.get("updated_at", "")
                 local_time = local_sec.get("updated_at", "")
-                if remote_time > local_time:
+                if parse_timestamp(remote_time) > parse_timestamp(local_time):
                     taken = self._section_repo.get_by_name(remote_sec["name"])
                     if taken is not None and taken.uuid != uid:
                         logger.warning(
@@ -449,7 +453,7 @@ class SyncEngine:
                 local_entry = local_entries[uid]
                 remote_time = remote_entry.get("updated_at", "")
                 local_time = local_entry.get("updated_at", "")
-                if remote_time > local_time:
+                if parse_timestamp(remote_time) > parse_timestamp(local_time):
                     self._entry_repo.update_from_sync(
                         entry_uuid=uid,
                         name=remote_entry["name"],

@@ -3,8 +3,9 @@
 import logging
 import sqlite3
 import uuid as uuid_mod
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
+from command_quiver.core.timestamps import utc_now_iso
 from command_quiver.db.models import (
     DuplicateSectionError,
     Entry,
@@ -134,7 +135,7 @@ class SectionRepository:
         cursor = self._conn.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM sections")
         next_pos = cursor.fetchone()[0]
         new_uuid = str(uuid_mod.uuid4())
-        now = datetime.now().isoformat()
+        now = utc_now_iso()
 
         cursor = self._conn.execute(
             "INSERT INTO sections (name, icon, position, uuid, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -160,7 +161,7 @@ class SectionRepository:
         """Crea una sezione con UUID specifico (usato dal sync engine)."""
         cursor = self._conn.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM sections")
         next_pos = cursor.fetchone()[0]
-        now = datetime.now().isoformat()
+        now = utc_now_iso()
 
         cursor = self._conn.execute(
             "INSERT INTO sections (name, icon, position, uuid, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -193,7 +194,7 @@ class SectionRepository:
         if cursor.fetchone() is not None:
             raise DuplicateSectionError(new_name)
 
-        now = datetime.now().isoformat()
+        now = utc_now_iso()
         cursor = self._conn.execute(
             "UPDATE sections SET name = ?, updated_at = ? WHERE id = ?",
             (new_name, now, section_id),
@@ -256,7 +257,7 @@ class SectionRepository:
         self._conn.execute(
             "INSERT OR REPLACE INTO sync_tombstones (uuid, entity_type, deleted_at) "
             "VALUES (?, ?, ?)",
-            (uuid, entity_type, datetime.now().isoformat()),
+            (uuid, entity_type, utc_now_iso()),
         )
         self._conn.commit()
 
@@ -381,7 +382,7 @@ class EntryRepository:
         """
         self._conn.execute(
             "UPDATE entries SET use_count = use_count + 1, last_used_at = ? WHERE id = ?",
-            (datetime.now().isoformat(), entry_id),
+            (utc_now_iso(), entry_id),
         )
         self._conn.commit()
 
@@ -394,13 +395,26 @@ class EntryRepository:
         )
         next_pos = cursor.fetchone()[0]
         new_uuid = str(uuid_mod.uuid4())
+        # Timestamp espliciti: il default CURRENT_TIMESTAMP ha un formato diverso (B2)
+        now = utc_now_iso()
 
         cursor = self._conn.execute(
             """
-            INSERT INTO entries (name, content, section_id, type, tags, personal_pos, uuid)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO entries (name, content, section_id, type, tags, personal_pos, uuid,
+                                 created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-            (data.name, data.content, data.section_id, data.type, data.tags, next_pos, new_uuid),
+            (
+                data.name,
+                data.content,
+                data.section_id,
+                data.type,
+                data.tags,
+                next_pos,
+                new_uuid,
+                now,
+                now,
+            ),
         )
         self._conn.commit()
 
@@ -425,7 +439,7 @@ class EntryRepository:
             (section_id,),
         )
         next_pos = cursor.fetchone()[0]
-        now = datetime.now().isoformat()
+        now = utc_now_iso()
 
         cursor = self._conn.execute(
             """
@@ -451,7 +465,7 @@ class EntryRepository:
 
     def update(self, data: EntryUpdate) -> Entry | None:
         """Aggiorna una voce esistente."""
-        now = datetime.now().isoformat()
+        now = utc_now_iso()
         cursor = self._conn.execute(
             """
             UPDATE entries
@@ -621,7 +635,7 @@ class EntryRepository:
         self._conn.execute(
             "INSERT OR REPLACE INTO sync_tombstones (uuid, entity_type, deleted_at) "
             "VALUES (?, ?, ?)",
-            (uuid, entity_type, datetime.now().isoformat()),
+            (uuid, entity_type, utc_now_iso()),
         )
         self._conn.commit()
 
@@ -647,24 +661,22 @@ class TombstoneRepository:
         self._conn.execute(
             "INSERT OR REPLACE INTO sync_tombstones (uuid, entity_type, deleted_at) "
             "VALUES (?, ?, ?)",
-            (tombstone_uuid, entity_type, deleted_at or datetime.now().isoformat()),
+            (tombstone_uuid, entity_type, deleted_at or utc_now_iso()),
         )
         self._conn.commit()
 
     def cleanup(self, max_age_days: int = 90) -> int:
         """Rimuove tombstones più vecchie di max_age_days."""
-        cutoff = datetime.now().isoformat()
-        # Approssimazione: confronto stringa ISO funziona per date ordinate
+        # Confronto fra stringhe: con formati misti sbaglia al più di qualche ora,
+        # irrilevante su una soglia di mesi
         cursor = self._conn.execute(
             "DELETE FROM sync_tombstones WHERE deleted_at < ?",
-            (cutoff[:10].replace(cutoff[:10], _days_ago(max_age_days)),),
+            (_days_ago(max_age_days),),
         )
         self._conn.commit()
         return cursor.rowcount
 
 
 def _days_ago(days: int) -> str:
-    """Restituisce la data ISO di N giorni fa."""
-    from datetime import timedelta
-
-    return (datetime.now() - timedelta(days=days)).isoformat()
+    """Restituisce l'istante ISO UTC di N giorni fa."""
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()

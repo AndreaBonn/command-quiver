@@ -385,6 +385,52 @@ def test_sync_remote_entry_with_unknown_section_lands_in_default(
     assert device.entries.get_by_uuid("e-1").section_id == device.sections.get_default_section_id()
 
 
+def _remote_edit_of(remote: FakeRemote, entry_uuid: str, content: str, updated_at: str) -> None:
+    entries = remote.state["entries"]
+    for entry in entries:
+        if entry["uuid"] == entry_uuid:
+            entry.update(content=content, updated_at=updated_at)
+    remote.edit(entries=entries)
+
+
+def _remote_content(remote: FakeRemote, entry_uuid: str) -> str:
+    return next(e["content"] for e in remote.state["entries"] if e["uuid"] == entry_uuid)
+
+
+def test_sync_local_edit_in_sqlite_format_beats_older_remote_iso_edit(
+    device: Device, remote: FakeRemote
+) -> None:
+    """Regressione B2: alle 12:00 UTC locali contro le 11:00 UTC remote vince il locale.
+
+    Confrontati come stringhe "2026-10-10 12:00:00" < "2026-10-10T11:00:00+00:00":
+    lo spazio perde sempre contro la "T" e vinceva la modifica più vecchia.
+    """
+    entry_uuid = device.add_entry("conteso")
+    device.engine.sync()
+    device.set_entry_updated_at(entry_uuid, "2026-10-10 12:00:00")
+    _remote_edit_of(remote, entry_uuid, content="remoto", updated_at="2026-10-10T11:00:00+00:00")
+
+    device.engine.sync()
+
+    assert device.entries.get_by_uuid(entry_uuid).content == "echo"
+    assert _remote_content(remote, entry_uuid) == "echo"
+
+
+def test_sync_newer_remote_iso_edit_beats_local_sqlite_format_edit(
+    device: Device, remote: FakeRemote
+) -> None:
+    """Positivo appaiato di B2: la modifica remota delle 13:00 UTC vince."""
+    entry_uuid = device.add_entry("conteso")
+    device.engine.sync()
+    device.set_entry_updated_at(entry_uuid, "2026-10-10 12:00:00")
+    _remote_edit_of(remote, entry_uuid, content="remoto", updated_at="2026-10-10T13:00:00+00:00")
+
+    device.engine.sync()
+
+    assert device.entries.get_by_uuid(entry_uuid).content == "remoto"
+    assert _remote_content(remote, entry_uuid) == "remoto"
+
+
 def test_sync_remote_entry_in_section_deleted_by_same_pull_lands_in_default(
     device: Device, remote: FakeRemote
 ) -> None:
