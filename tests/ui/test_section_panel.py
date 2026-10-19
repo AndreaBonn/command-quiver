@@ -226,6 +226,30 @@ class TestSectionPanelDialogs:
         assert len(rows) == 1
         return rows[0].menu_button.get_popover()
 
+    def test_right_click_on_section_opens_its_menu(self, panel, db_for_ui: Database) -> None:
+        from unittest.mock import patch
+
+        from gi.repository import Gtk
+
+        name = self._names(db_for_ui)[0]
+        row = next(
+            r
+            for r in descendants(panel._section_list)
+            if isinstance(r, SectionRow) and r.section is not None and r.section.name == name
+        )
+        controllers = row.observe_controllers()
+        gestures = [
+            c
+            for c in (controllers.get_item(i) for i in range(controllers.get_n_items()))
+            if isinstance(c, Gtk.GestureClick) and c.get_button() == 3
+        ]
+        assert len(gestures) == 1
+
+        with patch.object(row.menu_button, "popup") as popup:
+            gestures[0].emit("pressed", 1, 0.0, 0.0)
+
+        popup.assert_called_once_with()
+
     def test_rename_from_menu_saves_new_name(self, panel, db_for_ui: Database) -> None:
         from gi.repository import Gtk
 
