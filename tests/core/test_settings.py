@@ -10,6 +10,7 @@ import pytest
 from command_quiver.core import settings as settings_module
 from command_quiver.core.settings import (
     Settings,
+    SyncSettings,
     delete_sync_token,
     load_settings,
     load_sync_token,
@@ -131,6 +132,23 @@ class TestSaveSettings:
         assert loaded.sort_order == original.sort_order
         assert loaded.last_section_id == original.last_section_id
         assert loaded.window_width == original.window_width
+
+    def test_save_sync_settings_roundtrip_preserves_typed_values(self, config_path: Path) -> None:
+        original = Settings(sync=SyncSettings(enabled=True, repo_owner="a", repo_name="b"))
+        save_settings(settings=original, config_path=config_path)
+
+        loaded = load_settings(config_path=config_path)
+
+        assert loaded.sync == SyncSettings(enabled=True, repo_owner="a", repo_name="b")
+
+    def test_load_sync_settings_unknown_fields_preserves_enabled(self, config_path: Path) -> None:
+        config_path.write_text(
+            json.dumps({"sync": {"enabled": True, "campo_futuro": 1}}), encoding="utf-8"
+        )
+
+        loaded = load_settings(config_path=config_path)
+
+        assert loaded.sync == SyncSettings(enabled=True)
 
     def test_save_creates_parent_dirs(self, tmp_path: Path) -> None:
         path = tmp_path / "subdir" / "deep" / "settings.json"

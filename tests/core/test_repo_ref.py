@@ -50,3 +50,10 @@ def test_format_repo_ref_empty_when_not_configured() -> None:
 )
 def test_parse_repo_ref_edge_inputs(text: str, expected: tuple[str, str] | None) -> None:
     assert parse_repo_ref(text) == expected
+
+
+def test_parse_repo_ref_trailing_text_rejected_valid_reference_accepted() -> None:
+    assert (parse_repo_ref(text="mrossi/vault extra"), parse_repo_ref(text="mrossi/vault")) == (
+        None,
+        ("mrossi", "vault"),
+    )

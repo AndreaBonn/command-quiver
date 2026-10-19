@@ -90,3 +90,23 @@ def test_content_preview_first_line_collapsed() -> None:
 
 def test_content_preview_truncated() -> None:
     assert content_preview("a" * 200, max_length=10) == "a" * 9 + "…"
+
+
+def test_collect_tags_mixed_case_uses_alphabetical_order() -> None:
+    assert collect_tags(tag_strings=["Banana", "apple"]) == ["apple", "Banana"]
+
+
+def test_name_from_content_exactly_100_characters_stays_whole() -> None:
+    assert name_from_content(content="x" * 100) == "x" * 100
+
+
+@pytest.mark.parametrize(
+    ("iso", "expected"),
+    [("2026-10-13T12:00:00", "6 giorni fa"), ("2026-10-12T12:00:00", "12/10/2026")],
+)
+def test_format_relative_time_week_boundary(iso: str, expected: str) -> None:
+    assert format_relative_time(iso=iso, now=NOW) == expected
+
+
+def test_content_preview_blank_lines_do_not_add_empty_segments() -> None:
+    assert content_preview(content="a\n\nb") == "a ↵ b"
