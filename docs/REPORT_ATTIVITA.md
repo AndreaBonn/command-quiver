@@ -387,3 +387,20 @@ Restano da decidere alcuni comportamenti, elencati sopra.
 - Complessità: Alta
 - Stato: Completato su `main` (commit `3a6aaf5`..`16bc4ad`, nessun push); aperti B13 e
   le quattro decisioni elencate, più i rami irraggiungibili segnalati
+
+## 2026-10-19 | Sessione #5 [DOCS]
+
+### Richiesta
+Riallineare la documentazione all'app dopo il rework dell'interfaccia.
+
+### Azioni Eseguite
+- `README.md` e `README.it.md`: nuova sezione Schermate (`docs/screenshots/{en,it}-{main,editor,run,sync,welcome}.png`); elenco funzioni riscritto (6 ordinamenti, ricerca su nomi, contenuti e tag, tag cliccabili, annulla eliminazione entro 5 s, benvenuto con 6 esempi, import/export JSON, scorciatoie, backup automatici; tolto "tema", non usato); setup sync con campo unico Repository (utente/repo o URL) aperto dalla barra in basso o dal menu ☰; Utilizzo riscritto (pulsante Nuova nella header bar, Esc svuota la ricerca e non chiude, uscita con Ctrl+Q, lingua dal menu ☰) con tabella scorciatoie e percorso dei backup.
+- `docs/ARCHITECTURE.md` e `.it.md`: albero UI rifatto (HeaderBar, SearchBar, ToastOverlay, SyncStatusBar, dialog), Ctrl+Q nel ciclo di vita, colonne `use_count` e `last_used_at` nello schema ER.
+- `SECURITY.md` e `.it.md`: versione supportata 2.1.x; misure riscritte (citavano `db/queries.py`, inesistente, e negavano l'uso di credenziali pur esistendo il token GitHub); tolta l'interfaccia D-Bus con Toggle/NewEntry, non più presente; aggiunti conferma di esecuzione, token con permessi 600, limiti di import e nota sui log, che contengono i primi 80 caratteri dei comandi.
+- `docs/PACKAGING.md`: esempio di installazione senza la versione fissa 1.0.0.
+- Screenshot generati avviando l'app reale su Xvfb con HOME isolato e voci di esempio; i dialog sono senza barra del titolo (nessun window manager).
+
+### Aperti
+- Descrizione del repo GitHub ancora "lives in your system tray" (tray rimosso).
+- Chiavi di traduzione inutilizzate: `sidebar.new_entry`, `sidebar.language`, `entry_list.row_tooltip`.
+- Nome sezione "Shell Commands" troncato nel pannello sezioni a 1000 px.
