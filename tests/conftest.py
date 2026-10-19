@@ -53,3 +53,16 @@ def default_settings(tmp_path: Path):
     from command_quiver.core.settings import Settings
 
     return Settings()
+
+
+@pytest.fixture(autouse=True)
+def _never_touch_real_config(tmp_path_factory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rete di sicurezza: un test che salva settings o token senza isolarli non scrive in ~/.config.
+
+    Misurato: ``test_sidebar.py`` e ``test_run_confirm.py`` riscrivevano il vero settings.json.
+    """
+    from command_quiver.core import settings as settings_module
+
+    safe = tmp_path_factory.mktemp("config")
+    monkeypatch.setattr(settings_module, "DEFAULT_CONFIG_PATH", safe / "settings.json")
+    monkeypatch.setattr(settings_module, "SYNC_TOKEN_PATH", safe / ".sync_token")
