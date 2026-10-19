@@ -24,8 +24,11 @@ def gtk_init():
 
     gi.require_version("Gtk", "4.0")
 
-    # GTK4 non richiede gtk_init() esplicito, ma verifichiamo il display
-    from gi.repository import Gdk
+    # Init esplicito: senza, get_default() è None se nessun altro modulo
+    # ha già inizializzato GTK (i test lanciati da soli venivano saltati)
+    from gi.repository import Gdk, Gtk
+
+    Gtk.init()
 
     display = Gdk.Display.get_default()
     if display is None:
