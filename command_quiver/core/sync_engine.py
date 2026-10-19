@@ -232,15 +232,7 @@ class SyncEngine:
         Strategia: unione di tutti gli UUID, last-write-wins per conflitti.
         Le tombstones vincono se più recenti dell'entry.
         """
-        # Unisci tombstones (dedup per uuid, tieni la più recente)
-        all_tombstones: dict[str, dict] = {}
-        for tombstone in local_state.get("tombstones", []) + remote_state.get("tombstones", []):
-            uid = tombstone["uuid"]
-            if (
-                uid not in all_tombstones
-                or tombstone["deleted_at"] > all_tombstones[uid]["deleted_at"]
-            ):
-                all_tombstones[uid] = tombstone
+        all_tombstones = self._merge_tombstones(local_state, remote_state)
 
         # Merge sezioni
         local_sections = {s["uuid"]: s for s in local_state.get("sections", [])}
@@ -268,6 +260,26 @@ class SyncEngine:
             "tombstones": list(all_tombstones.values()),
         }
 
+    @staticmethod
+    def _merge_tombstones(local_state: dict, remote_state: dict) -> dict[str, dict]:
+        """Unisce le tombstones locali e remote, tenendo per uuid la più recente."""
+        merged: dict[str, dict] = {}
+        for tombstone in local_state.get("tombstones", []) + remote_state.get("tombstones", []):
+            uid = tombstone["uuid"]
+            if uid not in merged or tombstone["deleted_at"] > merged[uid]["deleted_at"]:
+                merged[uid] = tombstone
+        return merged
+
+    @staticmethod
+    def _tombstone_wins(entity: dict, tombstone: dict | None) -> bool:
+        """Vero se la cancellazione è strettamente più recente dell'ultima modifica.
+
+        Regola unica per merge e pull: a parità di timestamp vince l'entità.
+        """
+        if tombstone is None:
+            return False
+        return tombstone["deleted_at"] > entity.get("updated_at", "")
+
     def _merge_entities(
         self,
         local_map: dict[str, dict],
@@ -284,10 +296,8 @@ class SyncEngine:
                 local_ent = local_map.get(uid)
                 remote_ent = remote_map.get(uid)
                 entity = local_ent or remote_ent
-                if entity:
-                    entity_time = entity.get("updated_at", "")
-                    if tombstones[uid]["deleted_at"] > entity_time:
-                        continue  # Cancellata, non includerla
+                if entity and self._tombstone_wins(entity, tombstones[uid]):
+                    continue  # Cancellata, non includerla
 
             local_ent = local_map.get(uid)
             remote_ent = remote_map.get(uid)
@@ -325,6 +335,11 @@ class SyncEngine:
         for section in self._section_repo.get_all():
             section_uuid_to_id[section.uuid] = section.id
 
+        # Tombstones locali e remote insieme: una cancellazione locale non ancora
+        # pushata deve impedire che il pull ricrei la voce (B7)
+        all_tombstones = self._merge_tombstones(local_state, remote_state)
+        local_entries = {e["uuid"]: e for e in local_state.get("entries", [])}
+
         # Applica tombstones remote
         remote_tombstones = {t["uuid"]: t for t in remote_state.get("tombstones", [])}
         local_tombstones = {t["uuid"]: t for t in local_state.get("tombstones", [])}
@@ -333,10 +348,21 @@ class SyncEngine:
         for uid in new_tombstones:
             tombstone = remote_tombstones[uid]
             entity_type = tombstone["entity_type"]
+            local_ent = local_entries.get(uid) or local_sections.get(uid)
+            if local_ent and not self._tombstone_wins(local_ent, tombstone):
+                continue  # Modifica locale successiva alla cancellazione remota (B3)
             if entity_type == "entry":
                 self._entry_repo.delete_by_uuid(uid)
-            elif entity_type == "section":
-                self._section_repo.delete_by_uuid(uid)
+            elif local_ent and not self._section_repo.delete_by_uuid(uid):
+                # Sezione di default: la delete la rifiuta. Niente tombstone e la si
+                # riafferma, così il last-write-wins la rimette nel push (B4)
+                self._section_repo.update_from_sync(
+                    section_uuid=uid,
+                    name=local_ent["name"],
+                    icon=local_ent["icon"],
+                    updated_at=datetime.now().isoformat(),
+                )
+                continue
             self._tombstone_repo.add(
                 tombstone_uuid=uid,
                 entity_type=entity_type,
@@ -345,7 +371,7 @@ class SyncEngine:
 
         # Sync sezioni remote
         for uid, remote_sec in remote_sections.items():
-            if uid in {t["uuid"] for t in remote_state.get("tombstones", [])}:
+            if self._tombstone_wins(remote_sec, all_tombstones.get(uid)):
                 continue
 
             if uid not in local_sections:
@@ -375,11 +401,10 @@ class SyncEngine:
             section_uuid_to_id[section.uuid] = section.id
 
         # Sync entries remote
-        local_entries = {e["uuid"]: e for e in local_state.get("entries", [])}
         remote_entries = {e["uuid"]: e for e in remote_state.get("entries", [])}
 
         for uid, remote_entry in remote_entries.items():
-            if uid in {t["uuid"] for t in remote_state.get("tombstones", [])}:
+            if self._tombstone_wins(remote_entry, all_tombstones.get(uid)):
                 continue
 
             section_uuid = remote_entry.get("section_uuid", "")
