@@ -113,6 +113,12 @@ class TestLoadSettings:
 
         assert load_settings(config_path=config_path) == Settings()
 
+    def test_field_of_wrong_type_returns_defaults(self, config_path: Path) -> None:
+        """Un campo noto col tipo sbagliato rompe la validazione: default, non crash."""
+        config_path.write_text(json.dumps({"window_width": "largo"}), encoding="utf-8")
+
+        assert load_settings(config_path=config_path) == Settings()
+
     def test_unreadable_path_returns_defaults(self, config_path: Path) -> None:
         config_path.mkdir()
 
