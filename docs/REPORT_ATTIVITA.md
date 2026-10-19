@@ -180,3 +180,96 @@ approvata: creare il repository di sincronizzazione direttamente dall'app.
 - Complessità: Alta
 - Stato: Implementato e verificato, non ancora committato (branch
   `feature/ux-improvements`); 39 proposte su 40 applicate, Y6 non approvata
+
+## 2026-10-19 | Sessione #3 [REFACTOR] [TEST] [FIX]
+
+### Richiesta
+Scomporre i moduli troppo grandi del progetto e coprirli con test comportamentali,
+seguendo il workflow Research, Plan, Implement. Gli artefatti di piano sono in
+`specs/001-god-module-split/`.
+
+### Azioni Eseguite
+**Scomposizione dei moduli.**
+- `command_quiver/db/queries.py` (649 righe) è diviso in `section_repository`,
+  `entry_repository`, `tombstone_repository`, `sync_repository` ed `entry_import`.
+- `command_quiver/db/database.py` è diviso in `database`, `schema` e `backup`.
+- In `command_quiver/core/sync_engine.py` le regole pure del sync (merge LWW,
+  tombstone, piano del pull) sono in `sync_merge.py`.
+- Il coordinamento del sync è estratto da `app.py` in `core/sync_coordinator.py`.
+- UI: fusi i due dialog gemelli delle sezioni, estratta la logica pura da
+  `section_panel` ed `entry_editor`, rimossa l'API legacy dei callback.
+- Client GitHub: `build_request` è ora una funzione pura.
+
+**Bug corretti**, ciascuno con test di regressione in un commit `fix` separato.
+- B1: un secondo dispositivo con sezioni omonime falliva al primo sync.
+- B2: timestamp in formati misti venivano confrontati come stringhe.
+- B3, B3b, B7: il pull ignorava la regola delle tombstone, quindi voci cancellate
+  risorgevano e alcune modifiche andavano perse.
+- B4: la sezione di default poteva essere cancellata da remoto.
+- B6, B9: sezioni del seed senza uuid e database ricreato non migrato.
+- B8: delete e tombstone avvenivano in due transazioni diverse.
+- B10: voci orfane senza sezione.
+- B11: un repository errato veniva mostrato come errore di rete.
+- B12: `created_at` vuoto.
+- B14: la suite di test sovrascriveva il vero `~/.config/command-quiver/settings.json`.
+- B15: un comando con commento finale chiudeva subito il terminale.
+- B16: un database bloccato veniva ricreato come se fosse corrotto.
+- B17: errori del sync finale, di rete in lettura, di timestamp e backup parziali
+  non finivano nel log.
+- `Gdk` veniva importato senza `require_version` in 9 moduli.
+
+**Misure.**
+
+| Voce | Prima | Dopo |
+|------|-------|------|
+| Test | 411 | 862 |
+| Coverage | 85% (righe e rami combinati) | righe 99,9%, rami 97,1% |
+| Floor CI | 70% righe | 95% rami |
+
+In `ci.yml` sono stati anche ridotti i permessi al minimo e fissate le action a SHA.
+Il lavoro è in circa 40 commit atomici su `main`, da `9799abc` a `c674f83`. Nessun
+push.
+
+### Aperti
+- B13: la lista voci si tronca a 500 elementi senza avviso. La soluzione spetta a una
+  decisione dell'utente.
+- `SidebarPanel` ed `EntryEditorDialog` restano sopra le 200 righe per classe, come
+  eccezioni dichiarate.
+- Il test-audit finale ha coperto solo il gruppo app e utilità: gli altri 4 worker
+  sono stati fermati dall'utente, quindi i restanti gruppi non hanno un audit
+  completato.
+
+### Azione richiesta all'utente
+Il sync GitHub risulta disattivato dal 2 ottobre, perché i test riscrivevano
+`~/.config/command-quiver/settings.json` (bug B14, ora corretto). Il token è ancora
+presente. Nel dialog di sincronizzazione (menu ☰) vanno reinseriti owner e
+repository. Finché non lo si fa, le voci non si sincronizzano tra dispositivi.
+
+### File Modificati
+| Area | Tipo | Descrizione |
+|------|------|-------------|
+| `command_quiver/db/` | Crea/Modifica | Repository separati, `schema.py`, `backup.py`, `entry_import.py`; rimosso `queries.py` |
+| `command_quiver/core/` | Crea/Modifica | `sync_merge.py`, `sync_coordinator.py`, `build_request` puro nel client GitHub |
+| `command_quiver/ui/`, `command_quiver/app.py` | Modifica | Dialog sezioni fusi, logica pura estratta, API callback legacy rimossa |
+| `tests/` | Crea/Modifica | Da 411 a 862 test, con regressioni per ogni bug |
+| `.github/workflows/ci.yml` | Modifica | Floor 95% rami, permessi minimi, action pinnate a SHA |
+| `specs/001-god-module-split/` | Crea | Artefatti del workflow RPI |
+
+### Note per il Cliente
+Il codice è stato riorganizzato in parti più piccole, così da essere più semplice da
+mantenere. Durante il lavoro sono emersi e sono stati corretti diversi difetti, tra
+cui voci cancellate che ricomparivano dopo la sincronizzazione e modifiche che a volte
+andavano perse. Anche i controlli automatici sono molto più estesi: da 411 a 862
+verifiche.
+
+Va fatta una cosa a mano: la sincronizzazione con GitHub è ferma dal 2 ottobre, per
+un difetto dei test ora corretto. Basta aprire la finestra di sincronizzazione e
+reinserire utente e repository. Il token è ancora salvato.
+
+Resta aperta una decisione: la lista delle voci mostra al massimo 500 elementi senza
+avvisare. Va deciso come comportarsi oltre quel limite.
+
+### Riepilogo
+- Complessità: Alta
+- Stato: Completato su `main` (commit `9799abc`..`c674f83`, nessun push); aperti B13,
+  due classi UI oltre i limiti e il test-audit incompleto
