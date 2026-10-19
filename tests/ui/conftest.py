@@ -31,6 +31,10 @@ def make_sidebar(gtk_init, db_for_ui: Database, isolated_config):
 
     yield _make
     for window in toplevels() - before:
+        if isinstance(window, SidebarPanel):
+            # Come fa l'app prima di distruggerla: un debounce di ricerca pendente
+            # scatterebbe in un test successivo, a DB già chiuso
+            window.cancel_pending_timers()
         window.destroy()
 
 

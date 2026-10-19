@@ -1,6 +1,7 @@
 """Fixture condivise per tutti i test, inclusa inizializzazione GTK4."""
 
 import os
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -38,6 +39,39 @@ def gtk_init():
     if display is None:
         pytest.skip("Impossibile ottenere il display GTK4")
     return display
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_teardown(item: pytest.Item):
+    """Chiude le finestre principali rimaste aperte, prima che le fixture chiudano il DB.
+
+    Misurato: un debounce di ricerca o una cancellazione in attesa di una finestra
+    lasciata da un test scattavano in un test successivo, a DB già chiuso.
+    """
+    if "gi.repository.Gtk" in sys.modules and _HAS_DISPLAY:
+        from gi.repository import Gtk
+
+        from command_quiver.ui.sidebar import SidebarPanel
+
+        for window in Gtk.Window.list_toplevels():
+            if isinstance(window, SidebarPanel):
+                window.cancel_pending_timers()
+                window.destroy()
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _fail_on_gtk_handler_errors(monkeypatch: pytest.MonkeyPatch):
+    """Un'eccezione in un handler GTK fa fallire il test invece di essere solo stampata.
+
+    PyGObject non la propaga a ``emit()`` né al main loop: la passa a ``sys.excepthook``,
+    e senza questa fixture un clic che va in crash risultava un test verde.
+    """
+    errors: list[BaseException] = []
+    monkeypatch.setattr(sys, "excepthook", lambda _type, err, _tb: errors.append(err))
+    yield errors
+    if errors:
+        pytest.fail(f"eccezione in un handler GTK: {errors[0]!r}", pytrace=False)
 
 
 @pytest.fixture
