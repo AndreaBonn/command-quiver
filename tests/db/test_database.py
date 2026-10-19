@@ -1,6 +1,8 @@
 """Test per il modulo database: schema, inizializzazione, ricreazione."""
 
+import logging
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import UUID
 
@@ -440,6 +442,322 @@ class TestLocalizedSeed:
         assert "Git" not in names
         assert "Generale" in names
         db.close()
+
+
+def _create_legacy_database(db_path: Path, *, has_default: bool) -> None:
+    default_column = ", is_default INTEGER NOT NULL DEFAULT 0" if has_default else ""
+    with sqlite3.connect(str(db_path)) as connection:
+        connection.executescript(f"""
+            CREATE TABLE sections (
+                id INTEGER PRIMARY KEY, name TEXT UNIQUE, icon TEXT,
+                position INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                {default_column}
+            );
+            CREATE TABLE entries (
+                id INTEGER PRIMARY KEY, name TEXT, content TEXT, section_id INTEGER,
+                type TEXT, tags TEXT, personal_pos INTEGER DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO sections (id, name) VALUES (1, 'Generale');
+            INSERT INTO entries (id, name, content, section_id, type, tags)
+                VALUES (1, 'Saved command', 'echo saved', 1, 'shell', 'legacy');
+        """)
+
+
+@pytest.fixture(params=[False, True], ids=["v0", "v1"])
+def migrated_legacy_database(db_path: Path, request: pytest.FixtureRequest) -> Database:
+    """Database legacy (senza o con is_default) dopo la prima initialize."""
+    _create_legacy_database(db_path=db_path, has_default=request.param)
+    database = Database(db_path=db_path)
+    database.initialize(language="it")
+    yield database
+    database.close()
+
+
+def test_initialize_legacy_database_reaches_current_schema_version(
+    migrated_legacy_database: Database,
+) -> None:
+    version = migrated_legacy_database.connection.execute("PRAGMA user_version").fetchone()[0]
+
+    assert version == 3
+
+
+def test_initialize_legacy_database_preserves_entry_data(
+    migrated_legacy_database: Database,
+) -> None:
+    connection = migrated_legacy_database.connection
+
+    entry = connection.execute("SELECT * FROM entries").fetchone()
+    section = connection.execute("SELECT * FROM sections").fetchone()
+
+    assert (entry["name"], entry["content"], entry["section_id"]) == (
+        "Saved command",
+        "echo saved",
+        section["id"],
+    )
+
+
+def test_initialize_legacy_database_gives_new_columns_their_defaults(
+    migrated_legacy_database: Database,
+) -> None:
+    entry = migrated_legacy_database.connection.execute("SELECT * FROM entries").fetchone()
+
+    assert (entry["use_count"], entry["last_used_at"]) == (0, None)
+
+
+def test_initialize_legacy_database_populates_entry_uuid(
+    migrated_legacy_database: Database,
+) -> None:
+    entry = migrated_legacy_database.connection.execute("SELECT * FROM entries").fetchone()
+
+    assert str(UUID(entry["uuid"])) == entry["uuid"]
+
+
+def test_initialize_legacy_database_populates_section_uuid(
+    migrated_legacy_database: Database,
+) -> None:
+    section = migrated_legacy_database.connection.execute("SELECT * FROM sections").fetchone()
+
+    assert str(UUID(section["uuid"])) == section["uuid"]
+
+
+def test_initialize_legacy_database_with_sections_does_not_seed_more(
+    migrated_legacy_database: Database,
+) -> None:
+    count = migrated_legacy_database.connection.execute("SELECT COUNT(*) FROM sections")
+
+    assert count.fetchone()[0] == 1
+
+
+@pytest.fixture(params=[1, 2])
+def partially_migrated_database(db_path: Path, request: pytest.FixtureRequest) -> Database:
+    """Database con le colonne delle migrazioni già presenti ma user_version indietro."""
+    database = Database(db_path=db_path)
+    database.initialize()
+    connection = database.connection
+    connection.execute("UPDATE sections SET uuid = 'stable-id' WHERE name = 'Generale'")
+    connection.execute(f"PRAGMA user_version = {request.param}")
+    connection.commit()
+    database.close()
+    database.initialize()
+    yield database
+    database.close()
+
+
+def test_initialize_existing_migration_columns_finishes_migration(
+    partially_migrated_database: Database,
+) -> None:
+    version = partially_migrated_database.connection.execute("PRAGMA user_version").fetchone()[0]
+
+    assert version == 3
+
+
+def test_initialize_existing_migration_columns_preserves_existing_uuid(
+    partially_migrated_database: Database,
+) -> None:
+    row = partially_migrated_database.connection.execute(
+        "SELECT uuid FROM sections WHERE name = 'Generale'"
+    ).fetchone()
+
+    assert row[0] == "stable-id"
+
+
+def test_initialize_existing_migration_columns_does_not_duplicate_sections(
+    partially_migrated_database: Database,
+) -> None:
+    count = partially_migrated_database.connection.execute("SELECT COUNT(*) FROM sections")
+
+    assert count.fetchone()[0] == 4
+
+
+def test_initialize_corrupt_file_preserves_original_bytes_in_backup(db_path: Path) -> None:
+    original = b"not a sqlite database\x00"
+    db_path.write_bytes(original)
+    database = Database(db_path=db_path)
+
+    database.initialize(language="it")
+
+    database.close()
+    backups = list(db_path.parent.glob("*.db.bak.*"))
+    assert [backup.read_bytes() for backup in backups] == [original]
+
+
+_BACKUP_GLOB = "vault.auto.bak.*"
+
+
+def _start_database_with_counter(tmp_path: Path, counter: str) -> Database:
+    """Inizializza un database il cui contatore avvii vale `counter` prima dell'avvio."""
+    database = Database(db_path=tmp_path / "vault.db")
+    (tmp_path / ".backup_counter").write_text(counter)
+    database.initialize()
+    return database
+
+
+def test_initialize_counts_each_start(tmp_path: Path) -> None:
+    database = _start_database_with_counter(tmp_path, counter="2")
+    database.close()
+
+    assert (tmp_path / ".backup_counter").read_text() == "3"
+
+
+def test_initialize_fifth_start_creates_backup(tmp_path: Path) -> None:
+    database = _start_database_with_counter(tmp_path, counter="4")
+    database.close()
+
+    assert len(list(tmp_path.glob(_BACKUP_GLOB))) == 1
+
+
+def test_initialize_start_between_multiples_of_five_creates_no_backup(tmp_path: Path) -> None:
+    database = _start_database_with_counter(tmp_path, counter="3")
+    database.close()
+
+    assert list(tmp_path.glob(_BACKUP_GLOB)) == []
+
+
+def test_initialize_backup_is_a_consistent_copy_of_the_database(tmp_path: Path) -> None:
+    database = Database(db_path=tmp_path / "vault.db")
+    database.initialize()
+    database.connection.execute("INSERT INTO entries (name, content) VALUES ('kept', 'saved')")
+    database.connection.commit()
+    (tmp_path / ".backup_counter").write_text("4")
+
+    database.initialize()
+
+    database.close()
+    backup = next(tmp_path.glob(_BACKUP_GLOB))
+    with sqlite3.connect(str(backup)) as connection:
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
+def test_initialize_backup_contains_the_stored_entries(tmp_path: Path) -> None:
+    database = Database(db_path=tmp_path / "vault.db")
+    database.initialize()
+    database.connection.execute("INSERT INTO entries (name, content) VALUES ('kept', 'saved')")
+    database.connection.commit()
+    (tmp_path / ".backup_counter").write_text("4")
+
+    database.initialize()
+
+    database.close()
+    backup = next(tmp_path.glob(_BACKUP_GLOB))
+    with sqlite3.connect(str(backup)) as connection:
+        assert connection.execute("SELECT name FROM entries").fetchall() == [("kept",)]
+
+
+def _seed_old_backups(database: Database, directory: Path, days: range) -> None:
+    for day in days:
+        backup = directory / f"vault.auto.bak.200001{day:02d}T000000"
+        with sqlite3.connect(str(backup)) as connection:
+            database.connection.backup(connection)
+    (directory / ".backup_counter").write_text("4")
+
+
+def test_initialize_backup_keeps_only_the_three_newest_copies(tmp_path: Path) -> None:
+    database = Database(db_path=tmp_path / "vault.db")
+    database.initialize()
+    _seed_old_backups(database, directory=tmp_path, days=range(1, 5))
+
+    database.initialize()
+
+    database.close()
+    names = sorted(path.name for path in tmp_path.glob(_BACKUP_GLOB))
+    assert len(names) == 3
+    assert names[:2] == ["vault.auto.bak.20000103T000000", "vault.auto.bak.20000104T000000"]
+
+
+def test_initialize_invalid_counter_restarts_count_from_one(tmp_path: Path) -> None:
+    database = _start_database_with_counter(tmp_path, counter="invalid counter")
+    database.close()
+
+    assert (tmp_path / ".backup_counter").read_text() == "1"
+
+
+def test_initialize_invalid_counter_creates_backup_on_fifth_start(tmp_path: Path) -> None:
+    counter = tmp_path / ".backup_counter"
+    counter.write_text("invalid counter")
+    database = Database(db_path=tmp_path / "vault.db")
+
+    for _ in range(5):
+        database.initialize()
+        database.close()
+
+    assert len(list(tmp_path.glob(_BACKUP_GLOB))) == 1
+
+
+@pytest.fixture
+def database_closed_from_other_thread(
+    db_path: Path,
+) -> tuple[Database, sqlite3.Connection]:
+    """Database la cui connessione è stata chiusa da un thread diverso da quello creatore."""
+    database = Database(db_path=db_path)
+    database.initialize()
+    original = database.connection
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(database.close).result()
+    yield database, original
+    original.close()
+    database.close()
+
+
+def test_close_wrong_thread_logs_error(db: Database, caplog: pytest.LogCaptureFixture) -> None:
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(db.close).result()
+
+    assert logging.ERROR in {record.levelno for record in caplog.records}
+
+
+def test_close_wrong_thread_allows_reconnection_with_working_connection(
+    database_closed_from_other_thread: tuple[Database, sqlite3.Connection],
+) -> None:
+    database, original = database_closed_from_other_thread
+
+    connection = database.connection
+
+    assert connection is not original
+    assert connection.execute("SELECT COUNT(*) FROM sections").fetchone()[0] == 4
+
+
+def test_close_twice_in_creating_thread_logs_nothing(
+    db_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    database = Database(db_path=db_path)
+    database.initialize()
+    database.close()
+
+    database.close()
+
+    assert caplog.records == []
+
+
+def test_initialize_backup_unlink_error_does_not_stop_pruning_older_copies(
+    tmp_path: Path,
+) -> None:
+    database = Database(db_path=tmp_path / "vault.db")
+    database.initialize()
+    (tmp_path / "vault.auto.bak.20000101T000000").mkdir()
+    _seed_old_backups(database, directory=tmp_path, days=range(2, 6))
+
+    database.initialize()
+
+    database.close()
+    remaining = {path.name for path in tmp_path.glob("vault.auto.bak.2000*")}
+    assert remaining.isdisjoint(
+        {"vault.auto.bak.20000102T000000", "vault.auto.bak.20000103T000000"}
+    )
+
+
+def test_initialize_backup_unlink_error_preserves_recent_copies(tmp_path: Path) -> None:
+    database = Database(db_path=tmp_path / "vault.db")
+    database.initialize()
+    (tmp_path / "vault.auto.bak.20000101T000000").mkdir()
+    _seed_old_backups(database, directory=tmp_path, days=range(2, 6))
+
+    database.initialize()
+
+    database.close()
+    remaining = {path.name for path in tmp_path.glob("vault.auto.bak.2000*")}
+    assert {"vault.auto.bak.20000104T000000", "vault.auto.bak.20000105T000000"} <= remaining
 
 
 def test_initialize_fresh_database_assigns_uuid_to_seed_sections(db_path: Path) -> None:
