@@ -8,6 +8,7 @@ import pytest
 
 from command_quiver.core.github_client import ConnectionStatus
 from command_quiver.core.i18n import init as i18n_init
+from command_quiver.core.i18n import t
 from command_quiver.core.settings import Settings
 from tests.conftest import button_labelled, key_press, requires_display, wait_until
 
@@ -183,6 +184,23 @@ class TestSyncDialogFlows:
 
         assert with_callback._sync_now_btn.get_visible() is True
         assert without_callback._sync_now_btn.get_visible() is False
+
+    def test_token_field_links_to_github_token_creation(self, gtk_init, isolated_config) -> None:
+        from gi.repository import Gtk
+
+        from tests.conftest import descendants
+
+        dialog = _real_dialog(Settings())
+
+        links = [
+            (w.get_label(), w.get_uri())
+            for w in descendants(dialog)
+            if isinstance(w, Gtk.LinkButton)
+        ]
+        assert links == [
+            (t("sync.token_link"), "https://github.com/settings/personal-access-tokens/new")
+        ]
+        assert isinstance(dialog._token_entry, Gtk.PasswordEntry)
 
     def test_escape_closes_dialog_other_keys_do_not(self, gtk_init, isolated_config) -> None:
         from gi.repository import Gdk
