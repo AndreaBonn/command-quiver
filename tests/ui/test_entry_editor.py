@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from command_quiver.db.models import Entry, EntryCreate, EntryUpdate, Section
-from tests.conftest import requires_display
+from tests.conftest import button_labelled, descendants, key_press, requires_display
 
 
 def _make_sections() -> list[Section]:
@@ -383,7 +383,7 @@ class TestEntryEditorSave:
 class TestEntryEditorKeyboard:
     """Test scorciatoie da tastiera."""
 
-    def test_escape_returns_true(self, gtk_init) -> None:
+    def test_escape_closes_dialog(self, gtk_init) -> None:
         import gi
 
         from command_quiver.ui.entry_editor import EntryEditorDialog
@@ -397,8 +397,9 @@ class TestEntryEditorKeyboard:
             sections=_make_sections(),
             on_save=MagicMock(),
         )
-        result = dialog._on_key_pressed(None, Gdk.KEY_Escape, 0, Gdk.ModifierType(0))
-        assert result is True
+        with patch.object(dialog, "close") as close:
+            key_press(dialog, Gdk.KEY_Escape)
+        close.assert_called_once_with()
 
     def test_ctrl_s_returns_true(self, gtk_init) -> None:
         import gi
@@ -417,7 +418,7 @@ class TestEntryEditorKeyboard:
         result = dialog._on_key_pressed(None, Gdk.KEY_s, 0, Gdk.ModifierType.CONTROL_MASK)
         assert result is True
 
-    def test_ctrl_w_returns_true(self, gtk_init) -> None:
+    def test_ctrl_w_closes_dialog(self, gtk_init) -> None:
         import gi
 
         from command_quiver.ui.entry_editor import EntryEditorDialog
@@ -431,8 +432,9 @@ class TestEntryEditorKeyboard:
             sections=_make_sections(),
             on_save=MagicMock(),
         )
-        result = dialog._on_key_pressed(None, Gdk.KEY_w, 0, Gdk.ModifierType.CONTROL_MASK)
-        assert result is True
+        with patch.object(dialog, "close") as close:
+            key_press(dialog, Gdk.KEY_w, Gdk.ModifierType.CONTROL_MASK)
+        close.assert_called_once_with()
 
     @pytest.mark.parametrize(
         ("keyval_name", "copy"),
@@ -537,7 +539,7 @@ class TestEntryEditorDelete:
             on_save=MagicMock(),
             on_delete=mock_delete,
         )
-        assert dialog._is_edit is True
+        assert button_labelled(dialog, "Elimina").get_visible() is True
 
     def test_no_delete_button_in_create_mode(self, gtk_init) -> None:
         import gi
@@ -553,7 +555,8 @@ class TestEntryEditorDelete:
             sections=_make_sections(),
             on_save=MagicMock(),
         )
-        assert dialog._is_edit is False
+        labels = [w.get_label() for w in descendants(dialog) if isinstance(w, Gtk.Button)]
+        assert (labels.count("Elimina"), labels.count("Annulla")) == (0, 1)
 
     def test_submit_without_callback_noop(self, gtk_init) -> None:
         import gi
@@ -699,6 +702,61 @@ class TestEditorKeysAndTypes:
             parent=Gtk.Window(), sections=_make_sections(), entry=entry, on_save=on_save
         )
 
+    def test_save_closes_only_after_valid_content(self, gtk_init) -> None:
+        dialog = self._dialog()
+        with patch.object(dialog, "close") as close:
+            dialog._submit(copy=False)
+            calls_after_empty = close.call_count
+            dialog._content_view.get_buffer().set_text("echo hello")
+            dialog._submit(copy=False)
+
+        assert (calls_after_empty, close.call_count) == (0, 1)
+
+    @pytest.mark.parametrize(
+        ("label", "saved_contents", "copied"),
+        [
+            ("Salva", ["echo hello"], []),
+            ("Salva e Copia", ["echo hello"], ["echo hello"]),
+            ("Annulla", [], []),
+        ],
+        ids=["save", "save-and-copy", "cancel"],
+    )
+    def test_button_click_saves_copies_and_closes_as_labelled(
+        self, gtk_init, label: str, saved_contents: list[str], copied: list[str]
+    ) -> None:
+        saved = []
+        dialog = self._dialog(on_save=saved.append)
+        dialog._content_view.get_buffer().set_text("echo hello")
+        button = _button_showing(dialog, label)
+
+        with (
+            patch("command_quiver.ui.entry_editor.copy_to_clipboard") as copy,
+            patch.object(dialog, "close") as close,
+        ):
+            button.emit("clicked")
+
+        assert (
+            [data.content for data in saved],
+            [call.args[0] for call in copy.call_args_list],
+            close.call_count,
+        ) == (saved_contents, copied, 1)
+
+    def test_delete_without_callback_closes_dialog(self, gtk_init) -> None:
+        dialog = self._dialog(entry=_make_entry())
+        with patch.object(dialog, "close") as close:
+            button_labelled(dialog, "Elimina").emit("clicked")
+
+        close.assert_called_once_with()
+
+    @pytest.mark.parametrize("text", ["", "   ", " , , "])
+    def test_enter_on_empty_tag_input_keeps_existing_tags(self, gtk_init, text: str) -> None:
+        dialog = self._dialog(entry=_make_entry())
+        dialog._tag_entry.set_text(text)
+
+        dialog._tag_entry.emit("activate")
+
+        assert dialog._tag_input.tags == ["docker", "build"]
+
     def test_ctrl_with_unmapped_key_is_not_consumed(self, gtk_init) -> None:
         from gi.repository import Gdk
 
@@ -805,3 +863,20 @@ class TestEditorCommand:
         from command_quiver.ui.entry_editor import EditorCommand, editor_command
 
         assert editor_command(Gdk.KEY_a, ctrl=True) is EditorCommand.NONE
+
+
+def _button_showing(root, text: str):
+    """Il pulsante che mostra quel testo, come etichetta o in una label interna (Ctrl+S)."""
+    from gi.repository import Gtk
+
+    matches = [
+        w
+        for w in descendants(root)
+        if isinstance(w, Gtk.Button)
+        and (
+            w.get_label() == text
+            or any(isinstance(c, Gtk.Label) and c.get_label() == text for c in descendants(w))
+        )
+    ]
+    assert len(matches) == 1, f"pulsanti con testo {text!r}: {len(matches)}"
+    return matches[0]

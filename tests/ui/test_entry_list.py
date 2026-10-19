@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 from command_quiver.db.models import Entry
-from tests.conftest import requires_display
+from tests.conftest import descendants, requires_display
 
 
 def _make_entry(
@@ -37,23 +37,81 @@ class TestEntryRow:
 
         entry = _make_entry(entry_type="shell")
         row = EntryRow(entry=entry, callbacks=RowCallbacks(on_edit=MagicMock()))
-        assert row.entry == entry
+        labels = [w.get_label() for w in descendants(row) if hasattr(w, "get_label")]
+        assert {"Test Entry", "echo hello", "Comando", "test"} <= set(labels)
 
     def test_creates_with_prompt_entry(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryRow, RowCallbacks
 
         entry = _make_entry(entry_type="prompt")
         row = EntryRow(entry=entry, callbacks=RowCallbacks(on_edit=MagicMock()))
-        assert row.entry.type == "prompt"
+        labels = [w.get_label() for w in descendants(row) if hasattr(w, "get_label")]
+        assert {"Test Entry", "echo hello", "Prompt", "test"} <= set(labels)
 
-    def test_truncates_long_names(self, gtk_init) -> None:
+    def test_long_name_uses_end_ellipsis_and_keeps_full_label(self, gtk_init) -> None:
+        from gi.repository import Gtk, Pango
+
         from command_quiver.ui.entry_list import EntryRow, RowCallbacks
 
         long_name = "A" * 50
         entry = _make_entry(name=long_name)
         row = EntryRow(entry=entry, callbacks=RowCallbacks(on_edit=MagicMock()))
-        # Il nome lungo deve essere troncato nell'UI ma l'entry resta intatta
-        assert row.entry.name == long_name
+        label = next(
+            w
+            for w in descendants(row)
+            if isinstance(w, Gtk.Label) and w.has_css_class("entry-name")
+        )
+        assert (label.get_label(), label.get_ellipsize()) == (long_name, Pango.EllipsizeMode.END)
+
+    def test_execute_button_present_for_shell_and_absent_for_prompt(self, gtk_init) -> None:
+        from gi.repository import Gtk
+
+        from command_quiver.ui.entry_list import EntryRow, RowCallbacks
+
+        buttons = {}
+        for kind in ("shell", "prompt"):
+            row = EntryRow(
+                entry=_make_entry(entry_type=kind), callbacks=RowCallbacks(on_edit=lambda _: None)
+            )
+            buttons[kind] = [
+                w.get_icon_name() for w in descendants(row) if isinstance(w, Gtk.Button)
+            ]
+
+        icon = "media-playback-start-symbolic"
+        assert (buttons["shell"].count(icon), buttons["prompt"].count(icon)) == (1, 0)
+
+    def test_copy_records_entry_id_for_usage_ranking(self, gtk_init) -> None:
+        from command_quiver.ui.entry_list import EntryRow, RowCallbacks
+
+        used: list[int] = []
+        row = EntryRow(
+            entry=_make_entry(entry_id=42),
+            callbacks=RowCallbacks(on_edit=lambda _: None, on_use=used.append),
+        )
+        with patch("command_quiver.ui.entry_list.copy_to_clipboard", return_value=True):
+            row._copy_btn.emit("clicked")
+
+        assert used == [42]
+
+    def test_execute_records_entry_id_for_usage_ranking(self, gtk_init) -> None:
+        from gi.repository import Gtk
+
+        from command_quiver.ui.entry_list import EntryRow, RowCallbacks
+
+        used: list[int] = []
+        row = EntryRow(
+            entry=_make_entry(entry_id=73),
+            callbacks=RowCallbacks(on_edit=lambda _: None, on_use=used.append),
+        )
+        button = next(
+            w
+            for w in descendants(row)
+            if isinstance(w, Gtk.Button) and w.get_icon_name() == "media-playback-start-symbolic"
+        )
+        with patch("command_quiver.ui.entry_list.execute_in_terminal", return_value=True):
+            button.emit("clicked")
+
+        assert used == [73]
 
     def test_copy_button_calls_clipboard(self, gtk_init) -> None:
         from command_quiver.ui.entry_list import EntryRow, RowCallbacks

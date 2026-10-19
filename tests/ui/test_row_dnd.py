@@ -56,15 +56,26 @@ class TestDropTarget:
 
 @requires_display
 class TestDragHandle:
-    def test_handle_offers_an_int_the_drop_target_accepts(self, gtk_init) -> None:
-        from gi.repository import GObject, Gtk
+    def test_handle_drag_carries_its_entry_id(self, gtk_init) -> None:
+        from unittest.mock import patch
+
+        from gi.repository import Gdk, GObject, Gtk
 
         from command_quiver.ui.row_dnd import build_drag_handle
 
         handle = build_drag_handle(Gtk.Box(), entry_id=42)
         source = _controller(handle, Gtk.DragSource)
+        offered: list[GObject.Value] = []
+        real_new_for_value = Gdk.ContentProvider.new_for_value
 
-        provider = source.emit("prepare", 0.0, 0.0)
+        def capture(value: GObject.Value) -> Gdk.ContentProvider:
+            offered.append(value)
+            return real_new_for_value(value)
 
-        # Il valore dell'id non è leggibile da PyGObject senza un drop reale: si verifica il tipo
-        assert provider.ref_formats().contain_gtype(GObject.TYPE_INT) is True
+        # Il binding GI non sa rileggere il valore dal provider: si osserva al
+        # boundary GTK cosa la maniglia consegna al trascinamento
+        with patch.object(Gdk.ContentProvider, "new_for_value", side_effect=capture):
+            provider = source.emit("prepare", 0.0, 0.0)
+
+        assert [(v.g_type, v.get_int()) for v in offered] == [(GObject.TYPE_INT, 42)]
+        assert provider is not None

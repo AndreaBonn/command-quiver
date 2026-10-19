@@ -52,6 +52,25 @@ def _db(tmp_path: Path, name: str) -> Database:
 
 @requires_display
 class TestExportImport:
+    @pytest.mark.parametrize("language", ["it", "en"])
+    def test_added_samples_keep_catalog_types_and_tags(
+        self, gtk_init, db_for_ui, language: str
+    ) -> None:
+        from command_quiver.core.samples import sample_entries
+        from command_quiver.ui.library_actions import add_sample_entries
+
+        i18n_init(language)
+        entries = EntryRepository(db_for_ui.connection)
+        sections = SectionRepository(db_for_ui.connection)
+        catalog = sample_entries(language)
+
+        add_sample_entries(entry_repo=entries, section_repo=sections)
+
+        actual = {
+            entry.name: (entry.type, entry.tags) for entry in entries.get_all(None, "", "alpha_asc")
+        }
+        assert actual == {sample["name"]: (sample["type"], sample["tags"]) for sample in catalog}
+
     def test_roundtrip_moves_library_between_databases(self, gtk_init, tmp_path) -> None:
         from command_quiver.ui import library_actions
 

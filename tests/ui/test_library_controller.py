@@ -1,7 +1,7 @@
 """LibraryController con DB reale: vista e file dialog finti ai bordi."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -9,7 +9,7 @@ from command_quiver.core.i18n import init as i18n_init
 from command_quiver.core.library_io import serialize_export
 from command_quiver.db.database import Database
 from command_quiver.db.entry_repository import EntryRepository
-from command_quiver.db.models import EntryCreate
+from command_quiver.db.models import EntryCreate, EntryUpdate
 from command_quiver.db.section_repository import SectionRepository
 from tests.conftest import fake_file_dialog, requires_display
 
@@ -59,6 +59,21 @@ def harness(db_for_ui: Database, gtk_init) -> _Harness:
 
 @requires_display
 class TestDelete:
+    def test_flush_pending_delete_notifies_library_change(self, harness) -> None:
+        entry_id = harness.add("Log")
+        harness.controller.delete(entry_id)
+        before_flush = harness.view.notify_changed.call_count
+        pending_entry = harness.entries.get_by_id(entry_id)
+
+        harness.controller.pending_delete.flush()
+
+        assert (
+            pending_entry.id,
+            before_flush,
+            harness.view.notify_changed.call_args_list,
+            harness.entries.get_by_id(entry_id),
+        ) == (entry_id, 0, [call()], None)
+
     def test_delete_unknown_entry_shows_nothing_and_hides_nothing(self, harness) -> None:
         harness.controller.delete(9999)
 
@@ -100,6 +115,20 @@ class TestReorder:
         assert after["A"] == before["B"]
         assert after["B"] == before["A"]
         harness.view.refresh_entries.assert_called_once_with()
+
+
+@requires_display
+class TestSave:
+    @pytest.mark.parametrize("editing", [False, True], ids=["create", "update"])
+    def test_save_refreshes_library_view(self, harness, editing: bool) -> None:
+        if editing:
+            data = EntryUpdate(id=harness.add("Before"), name="After", content="ls", section_id=1)
+        else:
+            data = EntryCreate(name="After", content="ls", section_id=1)
+
+        harness.controller.save(data)
+
+        harness.view.refresh_all.assert_called_once_with()
 
 
 @requires_display

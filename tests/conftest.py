@@ -179,6 +179,18 @@ def _never_touch_real_config(tmp_path_factory, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(settings_module, "SYNC_TOKEN_PATH", safe / ".sync_token")
 
 
+@pytest.fixture(autouse=True)
+def _italian_by_default() -> None:
+    """Ogni test parte in italiano: la lingua è stato globale di i18n.
+
+    Misurato: un test che passava a "en" lasciava in inglese i successivi, e i test che
+    leggono "Comando"/"Prompt" passavano solo grazie all'ordine alfabetico dei file.
+    """
+    from command_quiver.core import i18n
+
+    i18n.init("it")
+
+
 class FakeThread:
     """Thread finto: ``alive`` decide se il join ha raggiunto la fine o è scaduto."""
 
