@@ -97,3 +97,35 @@ def test_humanize_github_error_unknown_status_keeps_code() -> None:
 
     message = humanize_github_error(GitHubApiError("teapot", status_code=418))
     assert "418" in message
+
+
+def test_count_pushed_counts_new_and_changed_entries() -> None:
+    from command_quiver.core.sync_engine import count_pushed
+
+    remote = [{"uuid": "a", "updated_at": "1"}, {"uuid": "b", "updated_at": "1"}]
+    merged = [
+        {"uuid": "a", "updated_at": "1"},  # invariata
+        {"uuid": "b", "updated_at": "2"},  # modificata in locale
+        {"uuid": "c", "updated_at": "1"},  # nuova
+    ]
+    assert count_pushed(merged=merged, remote=remote) == 2
+
+
+def test_count_pushed_nothing_changed() -> None:
+    from command_quiver.core.sync_engine import count_pushed
+
+    same = [{"uuid": "a", "updated_at": "1"}]
+    assert count_pushed(merged=same, remote=same) == 0
+
+
+def test_first_sync_reports_all_local_entries_pushed(sync_engine: SyncEngine) -> None:
+    from command_quiver.db.queries import EntryCreate, EntryRepository
+
+    repo = EntryRepository(sync_engine._db.connection)
+    repo.create(EntryCreate(name="a", content="a", section_id=1))
+    repo.create(EntryCreate(name="b", content="b", section_id=1))
+
+    result = sync_engine.sync()
+
+    assert result.success is True
+    assert result.entries_pushed == 2

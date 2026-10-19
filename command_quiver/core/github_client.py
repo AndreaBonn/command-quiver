@@ -9,6 +9,7 @@ import json
 import logging
 from base64 import b64decode, b64encode
 from dataclasses import dataclass
+from enum import Enum
 from http.client import HTTPResponse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -17,6 +18,25 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://api.github.com"
 _TIMEOUT_SECONDS = 30
+
+
+class ConnectionStatus(Enum):
+    """Esito del test di connessione: una voce per ogni causa che l'utente può correggere."""
+
+    OK = "ok"
+    MISSING_FIELDS = "missing_fields"
+    BAD_TOKEN = "bad_token"
+    FORBIDDEN = "forbidden"
+    NOT_FOUND = "not_found"
+    NETWORK = "network"
+    UNKNOWN = "unknown"
+
+
+_STATUS_BY_HTTP_CODE = {
+    0: ConnectionStatus.NETWORK,
+    401: ConnectionStatus.BAD_TOKEN,
+    403: ConnectionStatus.FORBIDDEN,
+}
 
 
 @dataclass
@@ -112,14 +132,31 @@ class GitHubClient:
         bool
             True se il token è valido e il repo è accessibile.
         """
+        return self.check_connection() is ConnectionStatus.OK
+
+    def check_connection(self) -> ConnectionStatus:
+        """Verifica token e repo e dice quale dei due va corretto.
+
+        Returns
+        -------
+        ConnectionStatus
+            OK se il repo è accessibile; altrimenti la causa (campi mancanti,
+            token rifiutato, permessi, repo inesistente, rete).
+        """
         if not all([self._token, self._owner, self._repo]):
-            return False
+            return ConnectionStatus.MISSING_FIELDS
 
         try:
             result = self._request("GET", f"/repos/{self._owner}/{self._repo}")
-            return result is not None
-        except GitHubApiError:
-            return False
+        except GitHubApiError as err:
+            return _STATUS_BY_HTTP_CODE.get(err.status_code, ConnectionStatus.UNKNOWN)
+        except (OSError, ValueError):
+            # Timeout in lettura, connessione interrotta o risposta non JSON: _request
+            # converte solo HTTPError/URLError, e un'eccezione qui lascerebbe il test
+            # di connessione senza esito (pulsante bloccato).
+            logger.warning("Test connessione GitHub interrotto", exc_info=True)
+            return ConnectionStatus.NETWORK
+        return ConnectionStatus.OK if result is not None else ConnectionStatus.NOT_FOUND
 
     def get_file(self, path: str) -> FileContent | None:
         """Scarica un file dal repo.

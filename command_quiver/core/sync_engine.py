@@ -75,6 +75,17 @@ def humanize_github_error(err: GitHubApiError) -> str:
     )
 
 
+def count_pushed(merged: list[dict], remote: list[dict]) -> int:
+    """Voci che il push porta sul remoto: nuove o con updated_at diverso da quello remoto."""
+    remote_versions = {item["uuid"]: item.get("updated_at") for item in remote}
+    return sum(
+        1
+        for item in merged
+        if item["uuid"] not in remote_versions
+        or remote_versions[item["uuid"]] != item.get("updated_at")
+    )
+
+
 @dataclass
 class SyncResult:
     """Risultato di un'operazione di sync."""
@@ -146,11 +157,15 @@ class SyncEngine:
                 # 4. Ri-esporta dopo apply (il DB locale è cambiato)
                 updated_local = self._export_local()
                 merged = self._merge(local_state=updated_local, remote_state=remote_state)
+                result.entries_pushed = count_pushed(
+                    merged=merged["entries"], remote=remote_state.get("entries", [])
+                )
             else:
                 # Primo sync: nessun file remoto
                 merged = local_state
                 current_sha = ""
                 result = SyncResult(success=True, message="Primo sync")
+                result.entries_pushed = len(local_state.get("entries", []))
 
             # 5. Push stato merged
             merged_json = json.dumps(merged, indent=2, ensure_ascii=False)
