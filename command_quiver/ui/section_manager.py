@@ -2,6 +2,8 @@
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
+from enum import Enum
 
 import gi
 
@@ -14,25 +16,78 @@ from command_quiver.db.models import Section
 logger = logging.getLogger(__name__)
 
 
-class SectionCreateDialog(Gtk.Window):
-    """Dialog per creare una nuova sezione."""
+class NameCheck(Enum):
+    """Esito della validazione del nome di una sezione."""
+
+    OK = "ok"
+    EMPTY = "empty"
+    UNCHANGED = "unchanged"
+
+
+def validate_section_name(name: str, current: str | None = None) -> NameCheck:
+    """Valuta il nome digitato per una sezione.
+
+    I duplicati non si controllano qui: l'unicità la decide il repository (con le
+    sue regole) e il messaggio torna dalla callback di conferma.
+
+    Parameters
+    ----------
+    name : str
+        Testo digitato, già senza spazi ai bordi.
+    current : str | None
+        Nome attuale in caso di rinomina, None in creazione.
+    """
+    if not name:
+        return NameCheck.EMPTY
+    if name == current:
+        return NameCheck.UNCHANGED
+    return NameCheck.OK
+
+
+@dataclass(frozen=True)
+class DialogTexts:
+    """Testi (già tradotti) del dialog nome sezione."""
+
+    title: str
+    label: str
+    button: str
+    placeholder: str = ""
+
+
+class SectionNameDialog(Gtk.Window):
+    """Dialog per creare o rinominare una sezione, parametrizzato da testi e callback.
+
+    Parameters
+    ----------
+    parent : Gtk.Window
+        Finestra proprietaria (il dialog è modale).
+    texts : DialogTexts
+        Titolo, etichetta del campo, pulsante di conferma e suggerimento.
+    on_confirm : Callable[[str], str | None]
+        Riceve il nome valido; restituisce il messaggio d'errore o None se è andata bene.
+    current : str | None
+        Nome attuale (rinomina): precompila il campo e, se non cambia, chiude senza confermare.
+    """
 
     def __init__(
         self,
         parent: Gtk.Window,
-        on_create: Callable[[str], str | None],
+        texts: DialogTexts,
+        on_confirm: Callable[[str], str | None],
+        current: str | None = None,
     ) -> None:
         super().__init__(
-            title=t("section.title_new"),
+            title=texts.title,
             transient_for=parent,
             modal=True,
             default_width=350,
             default_height=150,
         )
-        self._on_create = on_create
-        self._build_ui()
+        self._on_confirm = on_confirm
+        self._current = current
+        self._build_ui(texts)
 
-    def _build_ui(self) -> None:
+    def _build_ui(self, texts: DialogTexts) -> None:
         """Costruisce l'interfaccia del dialog."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.set_margin_top(16)
@@ -41,20 +96,24 @@ class SectionCreateDialog(Gtk.Window):
         box.set_margin_end(16)
         self.set_child(box)
 
-        # Campo nome
-        label = Gtk.Label(label=t("section.name_label"), xalign=0)
-        label.add_css_class("caption")
-        box.append(label)
+        caption = Gtk.Label(label=texts.label, xalign=0)
+        caption.add_css_class("caption")
+        box.append(caption)
 
-        self._name_entry = Gtk.Entry(placeholder_text=t("section.name_placeholder"))
-        self._name_entry.connect("activate", lambda _: self._do_create())
+        self._name_entry = Gtk.Entry(placeholder_text=texts.placeholder)
+        if self._current is not None:
+            self._name_entry.set_text(self._current)
+        self._name_entry.connect("activate", lambda _: self._do_confirm())
         box.append(self._name_entry)
 
         self._error_label = Gtk.Label(label="", xalign=0, visible=False)
         self._error_label.add_css_class("error-label")
         box.append(self._error_label)
 
-        # Bottoni
+        box.append(self._build_buttons(texts.button))
+
+    def _build_buttons(self, button_label: str) -> Gtk.Box:
+        """Riga con Annulla e il pulsante di conferma."""
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         btn_box.set_halign(Gtk.Align.END)
 
@@ -62,99 +121,63 @@ class SectionCreateDialog(Gtk.Window):
         cancel_btn.connect("clicked", lambda _: self.close())
         btn_box.append(cancel_btn)
 
-        create_btn = Gtk.Button(label=t("section.btn_create"))
-        create_btn.add_css_class("suggested-action")
-        create_btn.connect("clicked", lambda _: self._do_create())
-        btn_box.append(create_btn)
+        confirm_btn = Gtk.Button(label=button_label)
+        confirm_btn.add_css_class("suggested-action")
+        confirm_btn.connect("clicked", lambda _: self._do_confirm())
+        btn_box.append(confirm_btn)
+        return btn_box
 
-        box.append(btn_box)
+    def _show_error(self, message: str) -> None:
+        self._error_label.set_label(message)
+        self._error_label.set_visible(True)
 
-    def _do_create(self) -> None:
-        """Valida e crea la sezione."""
+    def _do_confirm(self) -> None:
+        """Valida il nome e lo passa alla callback; chiude solo se non ci sono errori."""
         name = self._name_entry.get_text().strip()
-        if not name:
-            self._error_label.set_label(t("section.error_name_required"))
-            self._error_label.set_visible(True)
+        check = validate_section_name(name, self._current)
+        if check is NameCheck.EMPTY:
+            self._show_error(t("section.error_name_required"))
             return
-
-        error = self._on_create(name)
-        if error:
-            self._error_label.set_label(error)
-            self._error_label.set_visible(True)
-            return
-        self.close()
-
-
-class SectionRenameDialog(Gtk.Window):
-    """Dialog per rinominare una sezione esistente."""
-
-    def __init__(
-        self,
-        parent: Gtk.Window,
-        section: Section,
-        on_rename: Callable[[int, str], str | None],
-    ) -> None:
-        super().__init__(
-            title=t("section.title_rename"),
-            transient_for=parent,
-            modal=True,
-            default_width=350,
-            default_height=150,
-        )
-        self._section = section
-        self._on_rename = on_rename
-        self._build_ui()
-
-    def _build_ui(self) -> None:
-        """Costruisce l'interfaccia del dialog."""
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        box.set_margin_top(16)
-        box.set_margin_bottom(16)
-        box.set_margin_start(16)
-        box.set_margin_end(16)
-        self.set_child(box)
-
-        label = Gtk.Label(label=t("section.new_name_label"), xalign=0)
-        label.add_css_class("caption")
-        box.append(label)
-
-        self._name_entry = Gtk.Entry()
-        self._name_entry.set_text(self._section.name)
-        self._name_entry.connect("activate", lambda _: self._do_rename())
-        box.append(self._name_entry)
-
-        self._error_label = Gtk.Label(label="", xalign=0, visible=False)
-        self._error_label.add_css_class("error-label")
-        box.append(self._error_label)
-
-        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        btn_box.set_halign(Gtk.Align.END)
-
-        cancel_btn = Gtk.Button(label=t("common.cancel"))
-        cancel_btn.connect("clicked", lambda _: self.close())
-        btn_box.append(cancel_btn)
-
-        rename_btn = Gtk.Button(label=t("section.btn_rename"))
-        rename_btn.add_css_class("suggested-action")
-        rename_btn.connect("clicked", lambda _: self._do_rename())
-        btn_box.append(rename_btn)
-
-        box.append(btn_box)
-
-    def _do_rename(self) -> None:
-        """Valida e rinomina la sezione."""
-        new_name = self._name_entry.get_text().strip()
-        if not new_name:
-            self._error_label.set_label(t("section.error_name_required"))
-            self._error_label.set_visible(True)
-            return
-        if new_name != self._section.name:
-            error = self._on_rename(self._section.id, new_name)
+        if check is NameCheck.OK:
+            error = self._on_confirm(name)
             if error:
-                self._error_label.set_label(error)
-                self._error_label.set_visible(True)
+                self._show_error(error)
                 return
         self.close()
+
+
+def create_section_dialog(
+    parent: Gtk.Window, on_create: Callable[[str], str | None]
+) -> SectionNameDialog:
+    """Dialog di creazione sezione."""
+    return SectionNameDialog(
+        parent=parent,
+        texts=DialogTexts(
+            title=t("section.title_new"),
+            label=t("section.name_label"),
+            button=t("section.btn_create"),
+            placeholder=t("section.name_placeholder"),
+        ),
+        on_confirm=on_create,
+    )
+
+
+def rename_section_dialog(
+    parent: Gtk.Window,
+    section: Section,
+    on_rename: Callable[[int, str], str | None],
+) -> SectionNameDialog:
+    """Dialog di rinomina sezione."""
+    return SectionNameDialog(
+        parent=parent,
+        texts=DialogTexts(
+            title=t("section.title_rename"),
+            label=t("section.new_name_label"),
+            button=t("section.btn_rename"),
+        ),
+        on_confirm=lambda name: on_rename(section.id, name),
+        current=section.name,
+    )
 
 
 def show_delete_section_dialog(

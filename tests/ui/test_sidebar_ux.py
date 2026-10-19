@@ -178,19 +178,21 @@ class TestSyncStatus:
 class TestSectionsMenu:
     def test_default_section_menu_has_no_delete(self, gtk_init, db_for_ui) -> None:
         from command_quiver.db.section_repository import SectionRepository
+        from command_quiver.ui.section_row import build_section_menu
 
-        sidebar = _sidebar(db_for_ui)
         default = next(s for s in SectionRepository(db_for_ui.connection).get_all() if s.is_default)
         other = next(
             s for s in SectionRepository(db_for_ui.connection).get_all() if not s.is_default
         )
 
-        panel = sidebar._section_panel
-        default_texts = _labels(panel._build_menu(default))
-        other_menu = panel._build_menu(other)
+        default_texts = _labels(build_section_menu(default, on_rename=print, on_delete=print))
+        other_menu = build_section_menu(other, on_rename=print, on_delete=print)
 
         assert "Elimina: non disponibile, è la sezione predefinita" in default_texts
-        assert "Elimina" not in [b.get_label() for b in _buttons(panel._build_menu(default))]
+        assert "Elimina" not in [
+            b.get_label()
+            for b in _buttons(build_section_menu(default, on_rename=print, on_delete=print))
+        ]
         assert "Elimina" in [b.get_label() for b in _buttons(other_menu)]
 
 

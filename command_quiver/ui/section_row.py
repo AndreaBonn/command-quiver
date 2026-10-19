@@ -71,3 +71,39 @@ class SectionRow(Gtk.Box):
         self.menu_button.add_css_class("flat")
         self.menu_button.add_css_class("section-menu-btn")
         self.insert_child_after(self.menu_button, self.get_first_child().get_next_sibling())
+
+
+def _flat_button(label: str, on_click: Callable[[], None]) -> Gtk.Button:
+    button = Gtk.Button(label=label)
+    button.add_css_class("flat")
+    button.connect("clicked", lambda _: on_click())
+    return button
+
+
+def build_section_menu(
+    section: Section,
+    on_rename: Callable[[Section], None],
+    on_delete: Callable[[Section], None],
+) -> Gtk.Popover:
+    """Menu della sezione. La sezione predefinita non si elimina: lo dice invece di fingere."""
+    popover = Gtk.Popover()
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+    for side in ("top", "bottom", "start", "end"):
+        getattr(box, f"set_margin_{side}")(4)
+
+    def _chosen(action: Callable[[Section], None]) -> None:
+        popover.popdown()
+        action(section)
+
+    box.append(_flat_button(t("sidebar.rename"), lambda: _chosen(on_rename)))
+    if section.is_default:
+        note = Gtk.Label(label=t("sidebar.default_not_deletable"), wrap=True, xalign=0)
+        note.set_max_width_chars(28)
+        note.add_css_class("dim-label")
+        note.add_css_class("caption")
+        box.append(note)
+    else:
+        box.append(_flat_button(t("sidebar.delete"), lambda: _chosen(on_delete)))
+
+    popover.set_child(box)
+    return popover

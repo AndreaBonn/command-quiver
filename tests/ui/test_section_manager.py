@@ -13,13 +13,13 @@ class TestSectionCreateDialog:
     def _create_dialog(self, on_create=None):
         import gi
 
-        from command_quiver.ui.section_manager import SectionCreateDialog
+        from command_quiver.ui.section_manager import create_section_dialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
 
         parent = Gtk.Window()
-        return SectionCreateDialog(
+        return create_section_dialog(
             parent=parent,
             on_create=on_create or MagicMock(),
         )
@@ -29,7 +29,7 @@ class TestSectionCreateDialog:
         dialog = self._create_dialog(on_create=mock_create)
         dialog._name_entry.set_text("")
 
-        dialog._do_create()
+        dialog._do_confirm()
         mock_create.assert_not_called()
         assert dialog._error_label.get_visible() is True
 
@@ -38,7 +38,7 @@ class TestSectionCreateDialog:
         dialog = self._create_dialog(on_create=mock_create)
         dialog._name_entry.set_text("   ")
 
-        dialog._do_create()
+        dialog._do_confirm()
         mock_create.assert_not_called()
 
     def test_calls_on_create_with_valid_name(self, gtk_init) -> None:
@@ -46,7 +46,7 @@ class TestSectionCreateDialog:
         dialog = self._create_dialog(on_create=mock_create)
         dialog._name_entry.set_text("Docker")
 
-        dialog._do_create()
+        dialog._do_confirm()
         mock_create.assert_called_once_with("Docker")
 
     def test_strips_whitespace_from_name(self, gtk_init) -> None:
@@ -54,7 +54,7 @@ class TestSectionCreateDialog:
         dialog = self._create_dialog(on_create=mock_create)
         dialog._name_entry.set_text("  Docker  ")
 
-        dialog._do_create()
+        dialog._do_confirm()
         mock_create.assert_called_once_with("Docker")
 
     def test_shows_error_on_duplicate_name(self, gtk_init) -> None:
@@ -62,7 +62,7 @@ class TestSectionCreateDialog:
         dialog = self._create_dialog(on_create=mock_create)
         dialog._name_entry.set_text("Docker")
 
-        dialog._do_create()
+        dialog._do_confirm()
         assert dialog._error_label.get_visible() is True
         assert "già esistente" in dialog._error_label.get_label()
 
@@ -74,14 +74,14 @@ class TestSectionRenameDialog:
     def _create_dialog(self, section=None, on_rename=None):
         import gi
 
-        from command_quiver.ui.section_manager import SectionRenameDialog
+        from command_quiver.ui.section_manager import rename_section_dialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
 
         parent = Gtk.Window()
         section = section or Section(id=1, name="Shell Commands", position=0)
-        return SectionRenameDialog(
+        return rename_section_dialog(
             parent=parent,
             section=section,
             on_rename=on_rename or MagicMock(),
@@ -98,7 +98,7 @@ class TestSectionRenameDialog:
         dialog = self._create_dialog(section=section, on_rename=mock_rename)
         dialog._name_entry.set_text("New Name")
 
-        dialog._do_rename()
+        dialog._do_confirm()
         mock_rename.assert_called_once_with(5, "New Name")
 
     def test_shows_error_on_duplicate_rename(self, gtk_init) -> None:
@@ -107,7 +107,7 @@ class TestSectionRenameDialog:
         dialog = self._create_dialog(section=section, on_rename=mock_rename)
         dialog._name_entry.set_text("Existing")
 
-        dialog._do_rename()
+        dialog._do_confirm()
         assert dialog._error_label.get_visible() is True
 
     def test_does_not_rename_if_same_name(self, gtk_init) -> None:
@@ -115,7 +115,7 @@ class TestSectionRenameDialog:
         section = Section(id=1, name="Same", position=0)
         dialog = self._create_dialog(section=section, on_rename=mock_rename)
         # Nome invariato
-        dialog._do_rename()
+        dialog._do_confirm()
         mock_rename.assert_not_called()
 
     def test_does_not_rename_empty_name(self, gtk_init) -> None:
@@ -123,7 +123,7 @@ class TestSectionRenameDialog:
         dialog = self._create_dialog(on_rename=mock_rename)
         dialog._name_entry.set_text("")
 
-        dialog._do_rename()
+        dialog._do_confirm()
         mock_rename.assert_not_called()
 
 
@@ -189,3 +189,27 @@ class TestDeleteSectionDialog:
 
     def test_dismissed_dialog_deletes_nothing(self, gtk_init) -> None:
         self._ask(choice=None).assert_not_called()
+
+
+class TestValidateSectionName:
+    """Validazione pura del nome, senza GTK."""
+
+    def test_validate_section_name_empty_returns_empty(self) -> None:
+        from command_quiver.ui.section_manager import NameCheck, validate_section_name
+
+        assert validate_section_name("") is NameCheck.EMPTY
+
+    def test_validate_section_name_same_as_current_returns_unchanged(self) -> None:
+        from command_quiver.ui.section_manager import NameCheck, validate_section_name
+
+        assert validate_section_name("Docker", current="Docker") is NameCheck.UNCHANGED
+
+    def test_validate_section_name_new_name_returns_ok(self) -> None:
+        from command_quiver.ui.section_manager import NameCheck, validate_section_name
+
+        assert validate_section_name("Git", current="Docker") is NameCheck.OK
+
+    def test_validate_section_name_creation_ignores_current(self) -> None:
+        from command_quiver.ui.section_manager import NameCheck, validate_section_name
+
+        assert validate_section_name("Docker") is NameCheck.OK

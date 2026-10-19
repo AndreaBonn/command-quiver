@@ -166,9 +166,9 @@ class TestSectionPanelDialogs:
     def test_new_section_is_created_listed_and_dialog_closes(
         self, panel, db_for_ui: Database
     ) -> None:
-        from command_quiver.ui.section_manager import SectionCreateDialog
+        from command_quiver.ui.section_manager import SectionNameDialog
 
-        dialog = self._open_dialog(panel, SectionCreateDialog)
+        dialog = self._open_dialog(panel, SectionNameDialog)
         assert dialog.get_visible() is True
         dialog._name_entry.set_text("Docker")
 
@@ -181,10 +181,10 @@ class TestSectionPanelDialogs:
         assert dialog.get_visible() is False
 
     def test_duplicate_name_keeps_dialog_open_with_error(self, panel, db_for_ui: Database) -> None:
-        from command_quiver.ui.section_manager import SectionCreateDialog
+        from command_quiver.ui.section_manager import SectionNameDialog
 
         before = self._names(db_for_ui)
-        dialog = self._open_dialog(panel, SectionCreateDialog)
+        dialog = self._open_dialog(panel, SectionNameDialog)
         dialog._name_entry.set_text(before[0])
 
         button_labelled(dialog, "Crea").emit("clicked")
@@ -204,12 +204,12 @@ class TestSectionPanelDialogs:
         return rows[0].menu_button.get_popover()
 
     def test_rename_from_menu_saves_new_name(self, panel, db_for_ui: Database) -> None:
-        from command_quiver.ui.section_manager import SectionRenameDialog
+        from command_quiver.ui.section_manager import SectionNameDialog
 
         old = self._names(db_for_ui)[0]
-        before = set(_toplevels_of(SectionRenameDialog))
+        before = set(_toplevels_of(SectionNameDialog))
         button_labelled(self._menu_of(panel, old), "Rinomina").emit("clicked")
-        dialog = _opened_since(before, SectionRenameDialog)[0]
+        dialog = _opened_since(before, SectionNameDialog)[0]
         assert dialog._name_entry.get_text() == old
         dialog._name_entry.set_text("Rinominata")
 
@@ -219,12 +219,12 @@ class TestSectionPanelDialogs:
         assert old not in self._names(db_for_ui)
 
     def test_rename_to_existing_name_is_refused(self, panel, db_for_ui: Database) -> None:
-        from command_quiver.ui.section_manager import SectionRenameDialog
+        from command_quiver.ui.section_manager import SectionNameDialog
 
         first, second = self._names(db_for_ui)[:2]
-        before = set(_toplevels_of(SectionRenameDialog))
+        before = set(_toplevels_of(SectionNameDialog))
         button_labelled(self._menu_of(panel, first), "Rinomina").emit("clicked")
-        dialog = _opened_since(before, SectionRenameDialog)[0]
+        dialog = _opened_since(before, SectionNameDialog)[0]
         dialog._name_entry.set_text(second)
 
         button_labelled(dialog, "Rinomina").emit("clicked")
@@ -272,3 +272,53 @@ class _AutoAnswer:
 
     def choose_finish(self, _result) -> int:
         return type(self).choice
+
+
+class TestVisibleCounts:
+    """Conteggi al netto della voce in cancellazione (funzione pura)."""
+
+    def _sections(self):
+        from command_quiver.db.models import Section
+
+        return [Section(id=1, name="A", entry_count=3), Section(id=2, name="B", entry_count=0)]
+
+    def _entry(self, section_id: int):
+        from command_quiver.db.models import Entry
+
+        return Entry(id=9, name="x", content="y", section_id=section_id)
+
+    def test_visible_counts_without_hidden_keeps_counts(self) -> None:
+        from command_quiver.ui.section_panel import visible_counts
+
+        assert visible_counts(total=3, sections=self._sections(), hidden=None) == (3, {1: 3, 2: 0})
+
+    def test_visible_counts_hidden_entry_lowers_total_and_its_section(self) -> None:
+        from command_quiver.ui.section_panel import visible_counts
+
+        result = visible_counts(total=3, sections=self._sections(), hidden=self._entry(1))
+
+        assert result == (2, {1: 2, 2: 0})
+
+    def test_visible_counts_never_goes_below_zero(self) -> None:
+        from command_quiver.ui.section_panel import visible_counts
+
+        _, per_section = visible_counts(total=1, sections=self._sections(), hidden=self._entry(2))
+
+        assert per_section[2] == 0
+
+
+class TestRowIndexFor:
+    def test_row_index_for_known_section_returns_its_position(self) -> None:
+        from command_quiver.ui.section_panel import row_index_for
+
+        assert row_index_for([None, 4, 7], current_id=7) == 2
+
+    def test_row_index_for_none_selects_all_row(self) -> None:
+        from command_quiver.ui.section_panel import row_index_for
+
+        assert row_index_for([None, 4, 7], current_id=None) == 0
+
+    def test_row_index_for_unknown_section_falls_back_to_first(self) -> None:
+        from command_quiver.ui.section_panel import row_index_for
+
+        assert row_index_for([None, 4, 7], current_id=99) == 0
