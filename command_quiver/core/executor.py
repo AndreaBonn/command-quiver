@@ -45,7 +45,9 @@ def execute_in_terminal(command: str) -> bool:
     # nel prompt di "premi INVIO" rompano la concatenazione bash.
     # Il comando stesso viene eseguito letteralmente (è ciò che l'utente vuole).
     press_enter_msg = t("executor.press_enter")
-    wrapped = f"{command}; echo {shlex.quote(press_enter_msg)}; read"
+    # A capo e non ";": un "# commento" in coda al comando si chiude con la riga,
+    # mentre con ";" commentava via anche messaggio e read e il terminale si chiudeva
+    wrapped = f"{command}\necho {shlex.quote(press_enter_msg)}\nread"
 
     try:
         subprocess.Popen(
