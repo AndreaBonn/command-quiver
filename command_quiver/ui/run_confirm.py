@@ -44,15 +44,8 @@ class RunConfirmDialog(Gtk.Window):
             getattr(box, f"set_margin_{side}")(16)
         self.set_child(box)
 
-        name = Gtk.Label(label=entry.name, xalign=0, wrap=True)
-        name.add_css_class("heading")
-        box.append(name)
-
-        command = Gtk.Label(
-            label=entry.content[:_MAX_PREVIEW_CHARS], xalign=0, wrap=True, selectable=True
-        )
-        command.add_css_class("command-preview")
-        box.append(command)
+        for label in self._build_preview(entry):
+            box.append(label)
 
         self._remember = Gtk.CheckButton(label=t("run.dont_ask"))
         box.append(self._remember)
@@ -63,6 +56,17 @@ class RunConfirmDialog(Gtk.Window):
         # Focus su Esegui: altrimenti la label selezionabile lo prende e seleziona tutto il comando
         self.set_focus(self._run_btn)
         self._setup_keyboard_shortcuts()
+
+    @staticmethod
+    def _build_preview(entry: Entry) -> tuple[Gtk.Label, Gtk.Label]:
+        """Nome della voce e comando, selezionabile per poterlo copiare."""
+        name = Gtk.Label(label=entry.name, xalign=0, wrap=True)
+        name.add_css_class("heading")
+        command = Gtk.Label(
+            label=entry.content[:_MAX_PREVIEW_CHARS], xalign=0, wrap=True, selectable=True
+        )
+        command.add_css_class("command-preview")
+        return name, command
 
     def _build_buttons(self) -> Gtk.Box:
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
