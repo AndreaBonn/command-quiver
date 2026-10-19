@@ -276,11 +276,15 @@ class TestSidebarPanel:
         from gi.repository import GLib
 
         from command_quiver.core.i18n import init as i18n_init
-        from command_quiver.ui.sidebar import SidebarPanel
+        from command_quiver.ui.sidebar import SidebarCallbacks, SidebarPanel
 
         i18n_init("it")
         callback = MagicMock()
-        sidebar = SidebarPanel(db=db_for_ui, settings=Settings(), on_language_changed=callback)
+        sidebar = SidebarPanel(
+            db=db_for_ui,
+            settings=Settings(),
+            callbacks=SidebarCallbacks(on_language_changed=callback),
+        )
 
         # idle_add eseguito subito per verificare l'invocazione del callback
         with patch("gi.repository.GLib.idle_add", side_effect=lambda fn, *a: fn(*a)):

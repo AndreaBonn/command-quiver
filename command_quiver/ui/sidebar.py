@@ -51,10 +51,7 @@ class SidebarPanel(Gtk.Window):
         self,
         db: Database,
         settings: Settings,
-        on_data_changed: Callable[[], None] | None = None,
-        on_sync_toggled: Callable[[], None] | None = None,
-        on_language_changed: Callable[[str], None] | None = None,
-        on_sync_now: Callable[[], None] | None = None,
+        callbacks: SidebarCallbacks | None = None,
     ) -> None:
         super().__init__(
             title="Command Quiver by Bonn",
@@ -62,9 +59,7 @@ class SidebarPanel(Gtk.Window):
             default_height=settings.window_height,
         )
         self._settings = settings
-        self._callbacks = SidebarCallbacks(
-            on_data_changed, on_sync_toggled, on_language_changed, on_sync_now
-        )
+        self._callbacks = callbacks or SidebarCallbacks()
         self._section_repo = SectionRepository(db.connection)
         self._entry_repo = EntryRepository(db.connection)
         self._search_text = ""
@@ -72,7 +67,19 @@ class SidebarPanel(Gtk.Window):
         load_app_css()
         self.set_titlebar(build_header_bar())
         self._build_ui()
-        self._library = LibraryController(
+        self._library = self._build_library()
+        self._pending_delete = self._library.pending_delete
+        self._install_actions()
+
+        self._section_panel.current_section_id = settings.last_section_id
+        self._section_panel.refresh()
+        self._refresh_entries()
+        self._connect_window_events()
+
+    # --- Costruzione ---
+
+    def _build_library(self) -> LibraryController:
+        return LibraryController(
             self._entry_repo,
             self._section_repo,
             LibraryView(
@@ -84,7 +91,14 @@ class SidebarPanel(Gtk.Window):
                 notify_changed=self._notify_data_changed,
             ),
         )
-        self._pending_delete = self._library.pending_delete
+
+    def _connect_window_events(self) -> None:
+        key_controller = Gtk.EventControllerKey()
+        key_controller.connect("key-pressed", self._on_key_pressed)
+        self.add_controller(key_controller)
+        self.connect("close-request", self._on_close_request)
+
+    def _install_actions(self) -> None:
         install_window_actions(
             self,
             handlers={
@@ -100,16 +114,18 @@ class SidebarPanel(Gtk.Window):
             on_language=self._on_language_action,
         )
 
-        self._section_panel.current_section_id = settings.last_section_id
-        self._section_panel.refresh()
-        self._refresh_entries()
-
-        key_controller = Gtk.EventControllerKey()
-        key_controller.connect("key-pressed", self._on_key_pressed)
-        self.add_controller(key_controller)
-        self.connect("close-request", self._on_close_request)
-
-    # --- Costruzione ---
+    def _build_entry_list(self) -> EntryListWidget:
+        return EntryListWidget(
+            callbacks=RowCallbacks(
+                on_edit=self._on_entry_click,
+                on_move=lambda eid, d: self._library.move(eid, d),
+                on_reorder=lambda m, t_: self._library.reorder(m, t_),
+                on_use=self._on_entry_used,
+                on_copied=lambda e: self._toast.show_message(t("toast.copied", name=e.name)),
+                on_run=self._on_run_requested,
+                on_tag=self._search_entry.set_text,
+            ),
+        )
 
     def _build_ui(self) -> None:
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -128,28 +144,14 @@ class SidebarPanel(Gtk.Window):
         self._section_panel.set_size_request(_SECTIONS_PANE_WIDTH, -1)
         paned.set_start_child(self._section_panel)
         paned.set_shrink_start_child(False)
-        self._entry_list = EntryListWidget(
-            callbacks=RowCallbacks(
-                on_edit=self._on_entry_click,
-                on_move=lambda eid, d: self._library.move(eid, d),
-                on_reorder=lambda m, t_: self._library.reorder(m, t_),
-                on_use=self._on_entry_used,
-                on_copied=lambda entry: self._toast.show_message(
-                    t("toast.copied", name=entry.name)
-                ),
-                on_run=self._on_run_requested,
-                on_tag=self._search_entry.set_text,
-            ),
-        )
+        self._entry_list = self._build_entry_list()
         # Avvisi sopra la sola lista: non coprono il pannello sezioni né la riga di stato
         self._toast = ToastOverlay(self._entry_list)
         paned.set_end_child(self._toast)
         paned.set_shrink_end_child(False)
         main_box.append(paned)
-
         self._status_bar = SyncStatusBar(self._settings, on_open_sync=self._open_sync_dialog)
         main_box.append(self._status_bar)
-
         self.set_child(main_box)
 
     def _build_search_row(self) -> Gtk.Box:

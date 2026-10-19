@@ -1,9 +1,12 @@
 """Fixture condivise per tutti i test, inclusa inizializzazione GTK4."""
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+
+from command_quiver.core.sync_coordinator import SyncRuntime
 
 # Verifica disponibilità display per test GTK4
 _HAS_DISPLAY = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
@@ -174,3 +177,76 @@ def _never_touch_real_config(tmp_path_factory, monkeypatch: pytest.MonkeyPatch) 
     safe = tmp_path_factory.mktemp("config")
     monkeypatch.setattr(settings_module, "DEFAULT_CONFIG_PATH", safe / "settings.json")
     monkeypatch.setattr(settings_module, "SYNC_TOKEN_PATH", safe / ".sync_token")
+
+
+class FakeThread:
+    """Thread finto: ``alive`` decide se il join ha raggiunto la fine o è scaduto."""
+
+    def __init__(self, alive: bool) -> None:
+        self._alive = alive
+        self.joined_with: float | None = None
+
+    def join(self, timeout: float | None = None) -> None:
+        self.joined_with = timeout
+
+    def is_alive(self) -> bool:
+        return self._alive
+
+
+class FakeRuntime:
+    """Scheduler, main loop e thread controllati dal test."""
+
+    def __init__(self) -> None:
+        self.timers: dict[int, Callable[[], bool]] = {}
+        self.scheduled: list[tuple[int, int]] = []  # (id, secondi)
+        self.cancelled: list[int] = []
+        self.spawned: list[Callable[[], object]] = []
+        self.threads: list[FakeThread] = []
+        self.threads_stay_alive = False
+        self.on_spawn: Callable[[], None] | None = None
+        self._main_queue: list[tuple[Callable[..., object], tuple]] = []
+        self._next_id = 1
+        self._ran = 0
+
+    def schedule(self, seconds: int, callback: Callable[[], bool]) -> int:
+        timer_id = self._next_id
+        self._next_id += 1
+        self.timers[timer_id] = callback
+        self.scheduled.append((timer_id, seconds))
+        return timer_id
+
+    def cancel(self, timer_id: int) -> None:
+        self.cancelled.append(timer_id)
+        self.timers.pop(timer_id, None)
+
+    def call_on_main(self, fn: Callable[..., object], *args: object) -> None:
+        self._main_queue.append((fn, args))
+
+    def spawn(self, target: Callable[[], object]) -> FakeThread:
+        if self.on_spawn is not None:
+            self.on_spawn()
+        self.spawned.append(target)
+        thread = FakeThread(alive=self.threads_stay_alive)
+        self.threads.append(thread)
+        return thread
+
+    def fire_timer(self) -> object:
+        """Scatta l'unico timer attivo, come farebbe GLib, e ne restituisce il valore di ritorno."""
+        (timer_id,) = self.timers
+        return self.timers.pop(timer_id)()
+
+    def complete_syncs(self) -> list[object]:
+        """Esegue i thread avviati e le callback sul main loop; restituisce i loro ritorni."""
+        while self._ran < len(self.spawned):
+            self.spawned[self._ran]()
+            self._ran += 1
+        queue, self._main_queue = self._main_queue, []
+        return [fn(*args) for fn, args in queue]
+
+    def as_runtime(self) -> SyncRuntime:
+        return SyncRuntime(
+            schedule=self.schedule,
+            cancel=self.cancel,
+            call_on_main=self.call_on_main,
+            spawn=self.spawn,
+        )

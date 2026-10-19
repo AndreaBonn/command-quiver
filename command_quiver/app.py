@@ -7,6 +7,7 @@ salvando lo stato. La singola istanza è garantita da GtkApplication + D-Bus.
 
 import logging
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import gi
@@ -18,16 +19,30 @@ from gi.repository import Gdk, Gio, GLib, Gtk
 
 from command_quiver import APP_ID
 from command_quiver.core.settings import load_settings, save_settings
+from command_quiver.core.sync_coordinator import SyncCoordinator, SyncRuntime, ThreadHandle
+from command_quiver.core.sync_engine import SyncEngine, SyncResult
 from command_quiver.db.database import Database
-from command_quiver.ui.sidebar import SidebarPanel
+from command_quiver.ui.sidebar import SidebarCallbacks, SidebarPanel
 
 logger = logging.getLogger(__name__)
 
-# Debounce sync: secondi di attesa dopo l'ultima modifica prima di pushare
-_SYNC_DEBOUNCE_SECONDS = 30
-
 # Timeout massimo (secondi) per il sync finale alla chiusura
 _FINAL_SYNC_TIMEOUT_SECONDS = 5
+
+
+def _spawn_daemon_thread(target: Callable[[], object]) -> ThreadHandle:
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    return thread
+
+
+def _glib_runtime() -> SyncRuntime:
+    return SyncRuntime(
+        schedule=GLib.timeout_add_seconds,
+        cancel=GLib.source_remove,
+        call_on_main=GLib.idle_add,
+        spawn=_spawn_daemon_thread,
+    )
 
 
 class CommandQuiverApp(Gtk.Application):
@@ -45,9 +60,12 @@ class CommandQuiverApp(Gtk.Application):
         self._db: Database | None = None
         self._settings = None
         self._sidebar: SidebarPanel | None = None
-        self._sync_engine = None
-        self._sync_debounce_id: int = 0
-        self._sync_running = False
+        self._sync = SyncCoordinator(
+            make_engine=self._make_sync_engine,
+            runtime=_glib_runtime(),
+            on_started=self._on_sync_started,
+            on_finished=self._on_sync_finished,
+        )
 
     def do_startup(self) -> None:
         """Inizializzazione al primo avvio (database, impostazioni, sync)."""
@@ -84,92 +102,29 @@ class CommandQuiverApp(Gtk.Application):
         self._db = Database()
         self._db.initialize(language=self._settings.language)
 
-        self._init_sync()
-
-    def _init_sync(self) -> None:
-        """Inizializza il sync engine e avvia sync all'avvio se abilitato."""
-        if not self._settings.sync.enabled:
-            return
-
-        from command_quiver.core.sync_engine import SyncEngine
-
-        self._sync_engine = SyncEngine(db=self._db, settings=self._settings)
-
         # Sync all'avvio in background (non blocca la UI)
-        self._run_sync_background()
+        if self._settings.sync.enabled:
+            self._sync.set_enabled(True)
 
-    def _run_sync_background(self) -> None:
-        """Esegue sync in un thread separato per non bloccare la UI GTK."""
-        if self._sync_engine is None or self._sync_running:
-            # Una sola sync alla volta: due push in parallelo usano lo stesso SHA (409)
-            return
-        self._sync_running = True
+    def _make_sync_engine(self) -> SyncEngine:
+        return SyncEngine(db=self._db, settings=self._settings)
+
+    def _on_sync_started(self) -> None:
         if self._sidebar is not None:
             self._sidebar.set_sync_pending()
 
-        def _sync_thread() -> None:
-            try:
-                result = self._sync_engine.sync()
-            except Exception:
-                logger.exception("Eccezione non gestita nel thread sync")
-                from command_quiver.core.sync_engine import SyncResult
-
-                result = SyncResult(success=False, message="Errore interno sync")
-            GLib.idle_add(self._on_sync_complete, result)
-
-        thread = threading.Thread(target=_sync_thread, daemon=True)
-        thread.start()
-
-    def _on_sync_complete(self, result) -> bool:
-        """Callback sync completato (eseguita sul main thread GTK)."""
-        self._sync_running = False
-        if result.success:
-            logger.info("Sync completato: %s", result.message)
-            # Refresh sidebar se visibile e se ci sono cambiamenti dal remoto
-            if (
-                result.entries_pulled > 0 or result.sections_pulled > 0
-            ) and self._sidebar is not None:
-                self._sidebar.refresh_all()
-        else:
-            logger.warning("Sync fallito: %s", result.message)
-
-        # Aggiorna status nella sidebar
-        if self._sidebar is not None:
-            self._sidebar.update_sync_status(result)
-
-        return False  # Rimuovi da idle
+    def _on_sync_finished(self, result: SyncResult) -> None:
+        """Aggiorna la sidebar con l'esito (eseguita sul main thread GTK)."""
+        if self._sidebar is None:
+            return
+        # Refresh solo se dal remoto è arrivato qualcosa
+        if result.success and (result.entries_pulled > 0 or result.sections_pulled > 0):
+            self._sidebar.refresh_all()
+        self._sidebar.update_sync_status(result)
 
     def _on_sync_toggled(self) -> None:
-        """Reinizializza SyncEngine quando sync viene attivato/disattivato dal dialog."""
-        if self._settings.sync.enabled:
-            from command_quiver.core.sync_engine import SyncEngine
-
-            self._sync_engine = SyncEngine(db=self._db, settings=self._settings)
-            self._run_sync_background()
-            logger.info("Sync attivato, primo sync avviato")
-        else:
-            self._sync_engine = None
-            logger.info("Sync disattivato")
-
-    def on_data_changed(self) -> None:
-        """Callback invocato dalla sidebar dopo ogni CRUD. Debounce sync push."""
-        if self._sync_engine is None:
-            return
-
-        # Reset debounce timer
-        if self._sync_debounce_id:
-            GLib.source_remove(self._sync_debounce_id)
-
-        self._sync_debounce_id = GLib.timeout_add_seconds(
-            _SYNC_DEBOUNCE_SECONDS,
-            self._on_sync_debounce_fire,
-        )
-
-    def _on_sync_debounce_fire(self) -> bool:
-        """Timer debounce scaduto: esegui sync push."""
-        self._sync_debounce_id = 0
-        self._run_sync_background()
-        return False  # Non ripetere
+        """Riallinea il sync quando viene attivato/disattivato dal dialog."""
+        self._sync.set_enabled(self._settings.sync.enabled)
 
     def _show_error_dialog(self, message: str) -> None:
         """Mostra un dialog di errore fatale all'utente."""
@@ -195,10 +150,12 @@ class CommandQuiverApp(Gtk.Application):
         return SidebarPanel(
             db=self._db,
             settings=self._settings,
-            on_data_changed=self.on_data_changed,
-            on_sync_toggled=self._on_sync_toggled,
-            on_language_changed=self._change_language,
-            on_sync_now=self._run_sync_background,
+            callbacks=SidebarCallbacks(
+                on_data_changed=self._sync.request_soon,
+                on_sync_toggled=self._on_sync_toggled,
+                on_language_changed=self._change_language,
+                on_sync_now=self._sync.run_now,
+            ),
         )
 
     def _change_language(self, lang: str) -> None:
@@ -213,52 +170,43 @@ class CommandQuiverApp(Gtk.Application):
         self._settings.language = lang
         save_settings(self._settings)
 
-        # Ricostruisce la sidebar con le nuove traduzioni.
-        # La nuova finestra viene aggiunta prima di rimuovere la vecchia: senza
-        # hold() l'app uscirebbe se il numero di finestre toccasse zero.
         if self._sidebar is not None:
-            old_sidebar = self._sidebar
-            was_visible = old_sidebar.get_visible()
-            # Prima rende definitiva un'eventuale cancellazione in attesa: la nuova
-            # finestra rilegge il DB e non saprebbe di dover nascondere quella voce
-            old_sidebar.cancel_pending_timers()
-            # La nuova finestra nasce con la dimensione di quella che sostituisce
-            width, height = old_sidebar.get_default_size()
-            self._settings.window_width, self._settings.window_height = width, height
-            new_sidebar = self._create_sidebar()
-            self.add_window(new_sidebar)
-            self._sidebar = new_sidebar
-            self.remove_window(old_sidebar)
-            old_sidebar.destroy()
-            if was_visible:
-                new_sidebar.present()
+            self._replace_sidebar()
 
         logger.info("Lingua cambiata: %s", lang)
+
+    def _replace_sidebar(self) -> None:
+        """Ricostruisce la sidebar con le nuove traduzioni.
+
+        La nuova finestra viene aggiunta prima di rimuovere la vecchia: senza
+        hold() l'app uscirebbe se il numero di finestre toccasse zero.
+        """
+        old_sidebar = self._sidebar
+        was_visible = old_sidebar.get_visible()
+        # Prima rende definitiva un'eventuale cancellazione in attesa: la nuova
+        # finestra rilegge il DB e non saprebbe di dover nascondere quella voce
+        old_sidebar.cancel_pending_timers()
+        # La nuova finestra nasce con la dimensione di quella che sostituisce
+        width, height = old_sidebar.get_default_size()
+        self._settings.window_width, self._settings.window_height = width, height
+        new_sidebar = self._create_sidebar()
+        self.add_window(new_sidebar)
+        self._sidebar = new_sidebar
+        self.remove_window(old_sidebar)
+        old_sidebar.destroy()
+        if was_visible:
+            new_sidebar.present()
 
     def do_shutdown(self) -> None:
         """Chiusura ordinata: sync finale, salvataggio impostazioni, cleanup DB."""
         logger.info("Chiusura Command Quiver")
 
-        # Ferma debounce sync
-        if self._sync_debounce_id:
-            GLib.source_remove(self._sync_debounce_id)
-            self._sync_debounce_id = 0
-
         # Cancellazione in attesa (Annulla non più possibile): definitiva prima della sync
         if self._sidebar is not None:
             self._sidebar.cancel_pending_timers()
 
-        # Sync finale con timeout (non blocca la chiusura se la rete è lenta).
-        # Saltata se una sync è già in volo: due push con lo stesso SHA danno 409.
-        if self._sync_engine is not None and not self._sync_running:
-            sync_thread = threading.Thread(
-                target=self._sync_engine.sync,
-                daemon=True,
-            )
-            sync_thread.start()
-            sync_thread.join(timeout=_FINAL_SYNC_TIMEOUT_SECONDS)
-            if sync_thread.is_alive():
-                logger.warning("Sync finale timeout, chiusura senza attendere")
+        # Ferma il debounce e fa il sync finale con timeout (non blocca la chiusura)
+        self._sync.final_sync(timeout=_FINAL_SYNC_TIMEOUT_SECONDS)
 
         if self._settings:
             save_settings(self._settings)

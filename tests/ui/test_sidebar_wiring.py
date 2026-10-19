@@ -26,12 +26,16 @@ def _toplevels() -> set:
 @pytest.fixture
 def make_sidebar(gtk_init, db_for_ui: Database, isolated_config):
     """Costruisce la finestra con settings su tmp; chiude ciò che il test ha aperto."""
-    from command_quiver.ui.sidebar import SidebarPanel
+    from command_quiver.ui.sidebar import SidebarCallbacks, SidebarPanel
 
     before = _toplevels()
 
     def _make(settings: Settings | None = None, **callbacks) -> SidebarPanel:
-        return SidebarPanel(db=db_for_ui, settings=settings or Settings(), **callbacks)
+        return SidebarPanel(
+            db=db_for_ui,
+            settings=settings or Settings(),
+            callbacks=SidebarCallbacks(**callbacks),
+        )
 
     yield _make
     for window in _toplevels() - before:
