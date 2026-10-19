@@ -31,13 +31,13 @@ def normalize_import_item(item: dict) -> dict | None:
     )
 
 
+# SECURITY: le voci importate con type='shell' verranno eseguite letteralmente
+# dall'utente. Il file JSON è trattato come input fidato.
 def import_entries(
     data: list[dict], *, entry_repo: EntryRepository, section_repo: SectionRepository
 ) -> int:
     """Importa il prefisso ammesso della libreria, creando le sezioni mancanti.
 
-    SECURITY: le voci importate con type='shell' verranno eseguite letteralmente
-    dall'utente. Il file JSON è trattato come input fidato.
 
     Returns
     -------
