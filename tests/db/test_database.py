@@ -8,7 +8,10 @@ from uuid import UUID
 
 import pytest
 
+from command_quiver.db import backup
+from command_quiver.db.backup import auto_backup
 from command_quiver.db.database import Database
+from command_quiver.db.schema import detect_schema_version, migrate
 
 
 @pytest.fixture
@@ -200,8 +203,8 @@ class TestMigrationSystem:
 
     def test_migrations_idempotent(self, db: Database) -> None:
         """Chiamare _migrate() più volte non causa errori."""
-        db._migrate()
-        db._migrate()
+        migrate(db.connection)
+        migrate(db.connection)
         version = db.connection.execute("PRAGMA user_version").fetchone()[0]
         assert version >= 1
 
@@ -269,7 +272,7 @@ class TestAutoBackup:
         db_path = tmp_path / "vault.db"
         # Imposta contatore a N-1 per forzare backup al prossimo avvio
         counter_file = tmp_path / ".backup_counter"
-        counter_file.write_text(str(Database._BACKUP_EVERY_N - 1))
+        counter_file.write_text(str(backup._BACKUP_EVERY_N - 1))
 
         db = Database(db_path=db_path)
         db.initialize()
@@ -288,20 +291,20 @@ class TestAutoBackup:
             fake.write_text("fake")
 
         counter_file = tmp_path / ".backup_counter"
-        counter_file.write_text(str(Database._BACKUP_EVERY_N - 1))
+        counter_file.write_text(str(backup._BACKUP_EVERY_N - 1))
 
         db = Database(db_path=db_path)
         db.initialize()
         db.close()
 
         backups = list(tmp_path.glob("vault.auto.bak.*"))
-        assert len(backups) == Database._MAX_BACKUPS
+        assert len(backups) == backup._MAX_BACKUPS
 
     def test_backup_is_valid_sqlite(self, tmp_path: Path) -> None:
         """Il backup deve essere un DB SQLite valido."""
         db_path = tmp_path / "vault.db"
         counter_file = tmp_path / ".backup_counter"
-        counter_file.write_text(str(Database._BACKUP_EVERY_N - 1))
+        counter_file.write_text(str(backup._BACKUP_EVERY_N - 1))
 
         db = Database(db_path=db_path)
         db.initialize()
@@ -319,8 +322,8 @@ class TestAutoBackup:
     def test_auto_backup_skips_when_db_not_exists(self, tmp_path: Path) -> None:
         """_auto_backup non fa nulla se il file DB non esiste."""
         db_path = tmp_path / "nonexistent.db"
-        db = Database(db_path=db_path)
-        db._auto_backup()  # Non deve sollevare eccezioni
+        db = Database(db_path=tmp_path / "source.db")
+        auto_backup(db.connection, db_path)  # Non deve sollevare eccezioni
         backups = list(tmp_path.glob("*.auto.bak.*"))
         assert len(backups) == 0
 
@@ -345,8 +348,8 @@ class TestAutoBackup:
         db = Database(db_path=db_path)
         db.initialize()
 
-        with patch("command_quiver.db.database.Path.write_text", side_effect=OSError("perm")):
-            db._auto_backup()  # Non deve sollevare eccezioni
+        with patch("command_quiver.db.backup.Path.write_text", side_effect=OSError("perm")):
+            auto_backup(db.connection, db_path)  # Non deve sollevare eccezioni
 
         db.close()
 
@@ -360,14 +363,14 @@ class TestAutoBackup:
 
         # Resetta counter per triggerare backup alla prossima chiamata
         counter_file = tmp_path / ".backup_counter"
-        counter_file.write_text(str(Database._BACKUP_EVERY_N - 1))
+        counter_file.write_text(str(backup._BACKUP_EVERY_N - 1))
 
         # Intercetta sqlite3.connect nel modulo database per far fallire il backup
         def failing_connect(path, *args, **kwargs):
             raise sqlite3.Error("backup connection fail")
 
-        with patch("command_quiver.db.database.sqlite3.connect", side_effect=failing_connect):
-            db._auto_backup()  # Non deve sollevare eccezioni
+        with patch("command_quiver.db.backup.sqlite3.connect", side_effect=failing_connect):
+            auto_backup(db.connection, db_path)  # Non deve sollevare eccezioni
 
         db.close()
 
@@ -403,7 +406,7 @@ class TestDetectSchemaVersion:
 
         db = Database(db_path=db_path)
         db._connect()
-        version = db._detect_schema_version()
+        version = detect_schema_version(db.connection)
         assert version == 0
         db.close()
 
@@ -803,3 +806,12 @@ def test_initialize_schema_error_recreates_fully_migrated_database(db_path: Path
         assert all(UUID(value) for value in uuids)
     finally:
         database.close()
+
+
+def test_connect_without_recreation_propagates_open_error(db_path: Path) -> None:
+    # Ramo usato dalla ricreazione: se anche il nuovo file non si apre, l'errore sale
+    db_path.write_bytes(b"corrupt sqlite file")
+    database = Database(db_path=db_path)
+
+    with pytest.raises(sqlite3.DatabaseError, match="not a database"):
+        database._connect(_allow_recreate=False)
