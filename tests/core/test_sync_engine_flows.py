@@ -453,3 +453,50 @@ def test_sync_remote_entry_in_section_deleted_by_same_pull_lands_in_default(
 
     assert result.success is True
     assert device.entries.get_by_uuid("e-9").section_id == device.sections.get_default_section_id()
+
+
+def test_sync_new_remote_section_created_with_remote_uuid(
+    device: Device, remote: FakeRemote
+) -> None:
+    device.engine.sync()
+    remote.edit(sections=[*remote.state["sections"], _remote_section("new", "New", _PAST)])
+
+    result = device.engine.sync()
+
+    assert result.sections_pulled == 1
+    assert device.sections.get_by_uuid("new").name == "New"
+
+
+def test_sync_local_and_remote_equal_timestamp_keeps_local_version(
+    device: Device, remote: FakeRemote
+) -> None:
+    uid = device.add_entry("local")
+    device.engine.sync()
+    device.set_entry_updated_at(uid, _PAST)
+    _remote_edit_of(remote, uid, content="remote", updated_at=_PAST)
+
+    result = device.engine.sync()
+
+    assert result.entries_pulled == 0
+    assert device.entries.get_by_uuid(uid).content == "echo"
+    assert _remote_content(remote, uid) == "echo"
+
+
+def test_sync_section_rename_before_creation_frees_name_in_remote_order(
+    device: Device, remote: FakeRemote
+) -> None:
+    section = device.sections.create(name="Old")
+    _set_section_updated_at(device, section.uuid, _PAST)
+    device.engine.sync()
+    remote.edit(
+        sections=[
+            _remote_section(section.uuid, "Renamed", _PAST_LATER),
+            _remote_section("new", "Old", _PAST_LATER),
+        ]
+    )
+
+    result = device.engine.sync()
+
+    assert result.sections_pulled == 2
+    assert device.sections.get_by_uuid(section.uuid).name == "Renamed"
+    assert device.sections.get_by_uuid("new").name == "Old"

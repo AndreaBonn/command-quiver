@@ -1,16 +1,3 @@
-"""Motore di sincronizzazione: export, merge, push/pull via GitHub.
-
-Strategia: last-write-wins per UUID. Tombstones per propagare cancellazioni.
-Formato sync JSON:
-{
-    "format_version": 1,
-    "last_modified": "ISO timestamp",
-    "sections": [{uuid, name, icon, position, is_default, updated_at}, ...],
-    "entries": [{uuid, name, content, type, tags, section_uuid, created_at, updated_at}, ...],
-    "tombstones": [{uuid, entity_type, deleted_at}, ...]
-}
-"""
-
 import json
 import logging
 from dataclasses import dataclass
@@ -22,7 +9,14 @@ from command_quiver.core.settings import (
     load_sync_token,
     save_settings,
 )
-from command_quiver.core.timestamps import parse_timestamp, utc_now_iso
+from command_quiver.core.sync_merge import (
+    RemoteChangePlan,
+    build_sync_state,
+    count_pushed,
+    merge_states,
+    plan_remote_changes,
+)
+from command_quiver.core.timestamps import utc_now_iso
 from command_quiver.db.database import Database
 from command_quiver.db.queries import (
     EntryRepository,
@@ -31,8 +25,6 @@ from command_quiver.db.queries import (
 )
 
 logger = logging.getLogger(__name__)
-
-FORMAT_VERSION = 1
 
 # Messaggi azionabili per gli errori GitHub piu' comuni durante il sync.
 _NETWORK_ERROR_MESSAGE = "Impossibile raggiungere GitHub. Controlla la connessione di rete."
@@ -76,17 +68,6 @@ def humanize_github_error(err: GitHubApiError) -> str:
     )
 
 
-def count_pushed(merged: list[dict], remote: list[dict]) -> int:
-    """Voci che il push porta sul remoto: nuove o con updated_at diverso da quello remoto."""
-    remote_versions = {item["uuid"]: item.get("updated_at") for item in remote}
-    return sum(
-        1
-        for item in merged
-        if item["uuid"] not in remote_versions
-        or remote_versions[item["uuid"]] != item.get("updated_at")
-    )
-
-
 @dataclass
 class SyncResult:
     """Risultato di un'operazione di sync."""
@@ -99,25 +80,18 @@ class SyncResult:
 
 
 class SyncEngine:
-    """Orchestrazione sync: export locale, merge con remoto, push/pull.
+    """Orchestra il sync con repository creati sulla connessione del thread corrente.
 
-    I repository vengono creati all'inizio di ``sync()`` su una connessione
-    dedicata al thread che esegue il sync (vedi ``Database.create_connection``):
-    ``sync()`` gira in un thread daemon separato dal thread GTK e SQLite vieta
-    di condividere una connessione tra thread diversi.
+    ``sync()`` gira in un thread daemon separato dal thread GTK e SQLite vieta di
+    condividere una connessione fra thread: i repository nascono in ``sync()``
+    su una connessione dedicata (``Database.create_connection``).
     """
-
-    # Creati in sync() sulla connessione dedicata al thread di sync.
-    _section_repo: SectionRepository
-    _entry_repo: EntryRepository
-    _tombstone_repo: TombstoneRepository
 
     def __init__(self, db: Database, settings: Settings) -> None:
         self._db = db
         self._settings = settings
 
     def _create_client(self) -> GitHubClient | None:
-        """Crea il client GitHub se la configurazione è completa."""
         sync = self._settings.sync
         token = load_sync_token()
         if not all([sync.enabled, sync.repo_owner, sync.repo_name, token]):
@@ -125,75 +99,24 @@ class SyncEngine:
         return GitHubClient(token=token, owner=sync.repo_owner, repo=sync.repo_name)
 
     def sync(self) -> SyncResult:
-        """Esegue sync completo: pull remoto, merge, push stato merged."""
+        """Esegue pull e push sulla connessione dedicata al thread chiamante.
+
+        Returns
+        -------
+        SyncResult
+            Esito e conteggi, oppure messaggio di errore.
+        """
         client = self._create_client()
         if client is None:
             return SyncResult(success=False, message="Sync non configurato")
-
-        # Connessione dedicata: sync() gira in un thread separato dal thread GTK
-        # e SQLite vieta di riusare la connessione principale cross-thread.
         connection = self._db.create_connection()
         self._section_repo = SectionRepository(connection)
         self._entry_repo = EntryRepository(connection)
         self._tombstone_repo = TombstoneRepository(connection)
-
         try:
-            # 1. Esporta stato locale
-            local_state = self._export_local()
-
-            # 2. Scarica stato remoto
-            file_path = self._settings.sync.file_path
-            remote_file = client.get_file(path=file_path)
-
-            if remote_file is not None:
-                remote_state = json.loads(remote_file.content)
-                current_sha = remote_file.sha
-
-                # 3. Applica novità remote al DB locale
-                result = self._apply_remote_changes(
-                    local_state=local_state,
-                    remote_state=remote_state,
-                )
-
-                # 4. Ri-esporta dopo apply (il DB locale è cambiato)
-                updated_local = self._export_local()
-                merged = self._merge(local_state=updated_local, remote_state=remote_state)
-                result.entries_pushed = count_pushed(
-                    merged=merged["entries"], remote=remote_state.get("entries", [])
-                )
-            else:
-                # Primo sync: nessun file remoto
-                merged = local_state
-                current_sha = ""
-                result = SyncResult(success=True, message="Primo sync")
-                result.entries_pushed = len(local_state.get("entries", []))
-
-            # 5. Push stato merged
-            merged_json = json.dumps(merged, indent=2, ensure_ascii=False)
-            new_sha = client.put_file(
-                path=file_path,
-                content=merged_json,
-                sha=current_sha,
-            )
-
-            # 5. Aggiorna settings
-            self._settings.sync.last_sha = new_sha
-            self._settings.sync.last_sync = datetime.now().isoformat()
-            save_settings(self._settings)
-
-            # 6. Pulizia tombstones vecchie
-            self._tombstone_repo.cleanup(max_age_days=90)
-
-            result.success = True
-            if not result.message:
-                result.message = "Sync completato"
-            logger.info(
-                "Sync completato: %d entries pulled, %d sections pulled",
-                result.entries_pulled,
-                result.sections_pulled,
-            )
-            return result
-
+            merged, sha, result = self._pull_and_apply(client=client)
+            new_sha = self._push(client=client, merged=merged, sha=sha)
+            return self._record_success(new_sha=new_sha, result=result)
         except GitHubApiError as err:
             logger.error("Sync fallito: %s", err)
             return SyncResult(success=False, message=humanize_github_error(err))
@@ -203,120 +126,132 @@ class SyncEngine:
         finally:
             connection.close()
 
+    def _pull_and_apply(self, client: GitHubClient) -> tuple[dict, str, SyncResult]:
+        local = self._export_local()
+        remote_file = client.get_file(path=self._settings.sync.file_path)
+        if remote_file is None:
+            result = SyncResult(success=True, message="Primo sync")
+            result.entries_pushed = len(local.get("entries", []))
+            return local, "", result
+        remote = json.loads(remote_file.content)
+        plan = plan_remote_changes(local_state=local, remote_state=remote)
+        result = self._apply_plan(plan=plan, local_state=local, remote_state=remote)
+        merged = merge_states(
+            local_state=self._export_local(), remote_state=remote, now=utc_now_iso()
+        )
+        result.entries_pushed = count_pushed(
+            merged=merged["entries"], remote=remote.get("entries", [])
+        )
+        return merged, remote_file.sha, result
+
+    def _push(self, client: GitHubClient, merged: dict, sha: str) -> str:
+        return client.put_file(
+            path=self._settings.sync.file_path,
+            content=json.dumps(merged, indent=2, ensure_ascii=False),
+            sha=sha,
+        )
+
+    def _record_success(self, new_sha: str, result: SyncResult) -> SyncResult:
+        self._settings.sync.last_sha = new_sha
+        self._settings.sync.last_sync = datetime.now().isoformat()
+        save_settings(self._settings)
+        self._tombstone_repo.cleanup(max_age_days=90)
+        if not result.message:
+            result.message = "Sync completato"
+        logger.info(
+            "Sync completato: %d entries pulled, %d sections pulled",
+            result.entries_pulled,
+            result.sections_pulled,
+        )
+        return result
+
     def _export_local(self) -> dict:
-        """Esporta stato locale nel formato sync."""
-        sections = self._section_repo.get_all()
-        entries_data = self._entry_repo.export_for_sync()
-        tombstones = self._tombstone_repo.get_all()
+        return build_sync_state(
+            sections=[vars(s) for s in self._section_repo.get_all()],
+            entries=self._entry_repo.export_for_sync(),
+            tombstones=self._tombstone_repo.get_all(),
+            now=utc_now_iso(),
+        )
 
-        return {
-            "format_version": FORMAT_VERSION,
-            "last_modified": utc_now_iso(),
-            "sections": [
-                {
-                    "uuid": s.uuid,
-                    "name": s.name,
-                    "icon": s.icon,
-                    "position": s.position,
-                    "is_default": s.is_default,
-                    "updated_at": s.updated_at or s.created_at,
-                }
-                for s in sections
-            ],
-            "entries": entries_data,
-            "tombstones": tombstones,
-        }
-
-    def _merge(self, local_state: dict, remote_state: dict) -> dict:
-        """Merge locale + remoto. Restituisce stato unificato per il push.
-
-        Strategia: unione di tutti gli UUID, last-write-wins per conflitti.
-        Le tombstones vincono se più recenti dell'entry.
-        """
-        all_tombstones = self._merge_tombstones(local_state, remote_state)
-
-        # Merge sezioni
-        local_sections = {s["uuid"]: s for s in local_state.get("sections", [])}
+    def _apply_plan(
+        self, plan: RemoteChangePlan, local_state: dict, remote_state: dict
+    ) -> SyncResult:
+        result = SyncResult(success=True)
+        local = {s["uuid"]: s for s in local_state.get("sections", [])}
+        for tombstone in plan.tombstones:
+            self._apply_tombstone(tombstone=tombstone, local_sections=local)
         remote_sections = {s["uuid"]: s for s in remote_state.get("sections", [])}
-        merged_sections = self._merge_entities(
-            local_map=local_sections,
-            remote_map=remote_sections,
-            tombstones=all_tombstones,
-        )
-
-        # Merge entries
-        local_entries = {e["uuid"]: e for e in local_state.get("entries", [])}
+        new_sections = {s["uuid"] for s in plan.new_sections}
+        updated_sections = {s["uuid"] for s in plan.updated_sections}
+        for uid, section in remote_sections.items():
+            if uid in new_sections:
+                result.sections_pulled += self._pull_new_section(
+                    uid=uid, remote_sec=section, remote_sections=remote_sections
+                )
+            elif uid in updated_sections:
+                result.sections_pulled += self._update_section(section=section)
+        # La mappa segue le cancellazioni e le adozioni UUID per evitare id orfani (B10).
+        section_ids = {s.uuid: s.id for s in self._section_repo.get_all()}
+        default_id = self._section_repo.get_default_section_id()
+        new_entries = {e["uuid"] for e in plan.new_entries}
+        updated_entries = {e["uuid"] for e in plan.updated_entries}
         remote_entries = {e["uuid"]: e for e in remote_state.get("entries", [])}
-        merged_entries = self._merge_entities(
-            local_map=local_entries,
-            remote_map=remote_entries,
-            tombstones=all_tombstones,
+        for uid, entry in remote_entries.items():
+            if uid in new_entries or uid in updated_entries:
+                section_id = section_ids.get(entry.get("section_uuid", "")) or default_id
+                self._apply_entry(entry=entry, section_id=section_id, is_new=uid in new_entries)
+                result.entries_pulled += 1
+        return result
+
+    def _apply_tombstone(self, tombstone: dict, local_sections: dict) -> None:
+        uid = tombstone["uuid"]
+        entity_type = tombstone["entity_type"]
+        if entity_type == "entry":
+            self._entry_repo.delete_by_uuid(entry_uuid=uid)
+        elif uid in local_sections and not self._section_repo.delete_by_uuid(section_uuid=uid):
+            # La sezione predefinita riaffermata deve vincere nel push senza tombstone (B4).
+            section = local_sections[uid]
+            self._section_repo.update_from_sync(
+                section_uuid=uid,
+                name=section["name"],
+                icon=section["icon"],
+                updated_at=utc_now_iso(),
+            )
+            return
+        self._tombstone_repo.add(
+            tombstone_uuid=uid, entity_type=entity_type, deleted_at=tombstone["deleted_at"]
         )
 
-        return {
-            "format_version": FORMAT_VERSION,
-            "last_modified": utc_now_iso(),
-            "sections": list(merged_sections.values()),
-            "entries": list(merged_entries.values()),
-            "tombstones": list(all_tombstones.values()),
-        }
+    def _update_section(self, section: dict) -> int:
+        uid = section["uuid"]
+        taken = self._section_repo.get_by_name(name=section["name"])
+        if taken is not None and taken.uuid != uid:
+            logger.warning(
+                "Sync: rinomina remota di %s ignorata, nome '%s' già in uso", uid, section["name"]
+            )
+            return 0
+        self._section_repo.update_from_sync(
+            section_uuid=uid,
+            name=section["name"],
+            icon=section.get("icon", "folder"),
+            updated_at=section.get("updated_at", ""),
+        )
+        return 1
 
-    @staticmethod
-    def _merge_tombstones(local_state: dict, remote_state: dict) -> dict[str, dict]:
-        """Unisce le tombstones locali e remote, tenendo per uuid la più recente."""
-        merged: dict[str, dict] = {}
-        for tombstone in local_state.get("tombstones", []) + remote_state.get("tombstones", []):
-            uid = tombstone["uuid"]
-            if uid not in merged or parse_timestamp(tombstone["deleted_at"]) > parse_timestamp(
-                merged[uid]["deleted_at"]
-            ):
-                merged[uid] = tombstone
-        return merged
-
-    @staticmethod
-    def _tombstone_wins(entity: dict, tombstone: dict | None) -> bool:
-        """Vero se la cancellazione è strettamente più recente dell'ultima modifica.
-
-        Regola unica per merge e pull: a parità di timestamp vince l'entità.
-        """
-        if tombstone is None:
-            return False
-        return parse_timestamp(tombstone["deleted_at"]) > parse_timestamp(entity.get("updated_at"))
-
-    def _merge_entities(
-        self,
-        local_map: dict[str, dict],
-        remote_map: dict[str, dict],
-        tombstones: dict[str, dict],
-    ) -> dict[str, dict]:
-        """Merge generico per entità con UUID. Last-write-wins."""
-        merged: dict[str, dict] = {}
-
-        all_uuids = set(local_map) | set(remote_map)
-        for uid in all_uuids:
-            # Tombstone vince se più recente dell'entità
-            if uid in tombstones:
-                local_ent = local_map.get(uid)
-                remote_ent = remote_map.get(uid)
-                entity = local_ent or remote_ent
-                if entity and self._tombstone_wins(entity, tombstones[uid]):
-                    continue  # Cancellata, non includerla
-
-            local_ent = local_map.get(uid)
-            remote_ent = remote_map.get(uid)
-
-            if local_ent and remote_ent:
-                # Conflitto: vince il più recente
-                local_time = local_ent.get("updated_at", "")
-                remote_time = remote_ent.get("updated_at", "")
-                is_local_newer = parse_timestamp(local_time) >= parse_timestamp(remote_time)
-                merged[uid] = local_ent if is_local_newer else remote_ent
-            elif local_ent:
-                merged[uid] = local_ent
-            elif remote_ent:
-                merged[uid] = remote_ent
-
-        return merged
+    def _apply_entry(self, entry: dict, section_id: int | None, is_new: bool) -> None:
+        fields = dict(
+            entry_uuid=entry["uuid"],
+            name=entry["name"],
+            content=entry["content"],
+            section_id=section_id,
+            entry_type=entry.get("type", "prompt"),
+            tags=entry.get("tags", ""),
+            updated_at=entry.get("updated_at", ""),
+        )
+        if is_new:
+            self._entry_repo.create_from_sync(**fields, created_at=entry.get("created_at", ""))
+        else:
+            self._entry_repo.update_from_sync(**fields)
 
     def _pull_new_section(self, uid: str, remote_sec: dict, remote_sections: dict) -> int:
         """Porta in locale una sezione remota nuova. Restituisce 1 se l'ha creata.
@@ -325,7 +260,7 @@ class SyncEngine:
         un'altra installazione) ne adotta l'uuid invece di duplicarla (B1). Se
         l'omonima è già nel remoto è un conflitto di rinomina: si salta.
         """
-        same_name = self._section_repo.get_by_name(remote_sec["name"])
+        same_name = self._section_repo.get_by_name(name=remote_sec["name"])
         if same_name is None:
             self._section_repo.create_with_uuid(
                 name=remote_sec["name"],
@@ -340,129 +275,3 @@ class SyncEngine:
                 "Sync: sezione remota %s ignorata, nome '%s' già in uso", uid, remote_sec["name"]
             )
         return 0
-
-    def _apply_remote_changes(
-        self,
-        local_state: dict,
-        remote_state: dict,
-    ) -> SyncResult:
-        """Applica al DB locale le novità dal remoto.
-
-        Crea entries/sections nuove, aggiorna quelle con updated_at più recente,
-        cancella quelle con tombstone remota.
-        """
-        result = SyncResult(success=True)
-
-        # Mappa sezioni locali per UUID
-        local_sections = {s["uuid"]: s for s in local_state.get("sections", [])}
-        remote_sections = {s["uuid"]: s for s in remote_state.get("sections", [])}
-
-        # Tombstones locali e remote insieme: una cancellazione locale non ancora
-        # pushata deve impedire che il pull ricrei la voce (B7)
-        all_tombstones = self._merge_tombstones(local_state, remote_state)
-        local_entries = {e["uuid"]: e for e in local_state.get("entries", [])}
-
-        # Applica tombstones remote
-        remote_tombstones = {t["uuid"]: t for t in remote_state.get("tombstones", [])}
-        local_tombstones = {t["uuid"]: t for t in local_state.get("tombstones", [])}
-        new_tombstones = set(remote_tombstones) - set(local_tombstones)
-
-        for uid in new_tombstones:
-            tombstone = remote_tombstones[uid]
-            entity_type = tombstone["entity_type"]
-            local_ent = local_entries.get(uid) or local_sections.get(uid)
-            if local_ent and not self._tombstone_wins(local_ent, tombstone):
-                continue  # Modifica locale successiva alla cancellazione remota (B3)
-            if entity_type == "entry":
-                self._entry_repo.delete_by_uuid(uid)
-            elif local_ent and not self._section_repo.delete_by_uuid(uid):
-                # Sezione di default: la delete la rifiuta. Niente tombstone e la si
-                # riafferma, così il last-write-wins la rimette nel push (B4)
-                self._section_repo.update_from_sync(
-                    section_uuid=uid,
-                    name=local_ent["name"],
-                    icon=local_ent["icon"],
-                    updated_at=utc_now_iso(),
-                )
-                continue
-            self._tombstone_repo.add(
-                tombstone_uuid=uid,
-                entity_type=entity_type,
-                deleted_at=tombstone["deleted_at"],
-            )
-
-        # Sync sezioni remote
-        for uid, remote_sec in remote_sections.items():
-            if self._tombstone_wins(remote_sec, all_tombstones.get(uid)):
-                continue
-
-            if uid not in local_sections:
-                result.sections_pulled += self._pull_new_section(uid, remote_sec, remote_sections)
-            else:
-                local_sec = local_sections[uid]
-                remote_time = remote_sec.get("updated_at", "")
-                local_time = local_sec.get("updated_at", "")
-                if parse_timestamp(remote_time) > parse_timestamp(local_time):
-                    taken = self._section_repo.get_by_name(remote_sec["name"])
-                    if taken is not None and taken.uuid != uid:
-                        logger.warning(
-                            "Sync: rinomina remota di %s ignorata, nome '%s' già in uso",
-                            uid,
-                            remote_sec["name"],
-                        )
-                        continue
-                    self._section_repo.update_from_sync(
-                        section_uuid=uid,
-                        name=remote_sec["name"],
-                        icon=remote_sec.get("icon", "folder"),
-                        updated_at=remote_time,
-                    )
-                    result.sections_pulled += 1
-
-        # Mappa uuid -> id letta solo ora: tombstone e sezioni remote appena applicate
-        # hanno creato, adottato o cancellato sezioni (una cancellata lascerebbe un id orfano)
-        section_uuid_to_id = {s.uuid: s.id for s in self._section_repo.get_all()}
-
-        # Sync entries remote
-        remote_entries = {e["uuid"]: e for e in remote_state.get("entries", [])}
-        default_section_id = self._section_repo.get_default_section_id()
-
-        for uid, remote_entry in remote_entries.items():
-            if self._tombstone_wins(remote_entry, all_tombstones.get(uid)):
-                continue
-
-            section_uuid = remote_entry.get("section_uuid", "")
-            # Sezione sconosciuta o cancellata: la voce va in Generale come per la
-            # cancellazione locale, invece di restare senza sezione e invisibile (B10)
-            section_id = section_uuid_to_id.get(section_uuid) or default_section_id
-
-            if uid not in local_entries:
-                # Nuova entry dal remoto
-                self._entry_repo.create_from_sync(
-                    name=remote_entry["name"],
-                    content=remote_entry["content"],
-                    entry_uuid=uid,
-                    section_id=section_id,
-                    entry_type=remote_entry.get("type", "prompt"),
-                    tags=remote_entry.get("tags", ""),
-                    created_at=remote_entry.get("created_at", ""),
-                    updated_at=remote_entry.get("updated_at", ""),
-                )
-                result.entries_pulled += 1
-            else:
-                local_entry = local_entries[uid]
-                remote_time = remote_entry.get("updated_at", "")
-                local_time = local_entry.get("updated_at", "")
-                if parse_timestamp(remote_time) > parse_timestamp(local_time):
-                    self._entry_repo.update_from_sync(
-                        entry_uuid=uid,
-                        name=remote_entry["name"],
-                        content=remote_entry["content"],
-                        section_id=section_id,
-                        entry_type=remote_entry.get("type", "prompt"),
-                        tags=remote_entry.get("tags", ""),
-                        updated_at=remote_time,
-                    )
-                    result.entries_pulled += 1
-
-        return result

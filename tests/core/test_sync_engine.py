@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from command_quiver.core.github_client import GitHubApiError
+from command_quiver.core.github_client import GitHubApiError, GitHubClient
 from command_quiver.core.settings import Settings
 from command_quiver.core.sync_engine import SyncEngine
 from command_quiver.db.database import Database
@@ -100,7 +100,7 @@ def test_humanize_github_error_unknown_status_keeps_code() -> None:
 
 
 def test_count_pushed_counts_new_and_changed_entries() -> None:
-    from command_quiver.core.sync_engine import count_pushed
+    from command_quiver.core.sync_merge import count_pushed
 
     remote = [{"uuid": "a", "updated_at": "1"}, {"uuid": "b", "updated_at": "1"}]
     merged = [
@@ -112,7 +112,7 @@ def test_count_pushed_counts_new_and_changed_entries() -> None:
 
 
 def test_count_pushed_nothing_changed() -> None:
-    from command_quiver.core.sync_engine import count_pushed
+    from command_quiver.core.sync_merge import count_pushed
 
     same = [{"uuid": "a", "updated_at": "1"}]
     assert count_pushed(merged=same, remote=same) == 0
@@ -129,3 +129,83 @@ def test_first_sync_reports_all_local_entries_pushed(sync_engine: SyncEngine) ->
 
     assert result.success is True
     assert result.entries_pushed == 2
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("", True, "a", "b", False),
+        ("token", False, "a", "b", False),
+        ("token", True, "", "b", False),
+        ("token", True, "a", "", False),
+        ("token", True, "a", "b", True),
+    ],
+)
+def test_create_client_configuration_returns_expected_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: tuple
+) -> None:
+    token, enabled, owner, repo, expected = case
+    settings = Settings()
+    settings.sync.enabled = enabled
+    settings.sync.repo_owner = owner
+    settings.sync.repo_name = repo
+    engine = SyncEngine(db=Database(db_path=tmp_path / "unused.db"), settings=settings)
+    monkeypatch.setattr("command_quiver.core.sync_engine.load_sync_token", lambda: token)
+
+    client = engine._create_client()
+
+    assert isinstance(client, GitHubClient) is expected
+    settings.sync.enabled = True
+    settings.sync.repo_owner = "a"
+    settings.sync.repo_name = "b"
+    monkeypatch.setattr("command_quiver.core.sync_engine.load_sync_token", lambda: "token")
+    assert engine._create_client()._owner == "a"
+
+
+def test_sync_unconfigured_returns_failure(
+    sync_engine: SyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sync_engine, "_create_client", lambda: None)
+
+    result = sync_engine.sync()
+
+    assert (result.success, result.message) == (False, "Sync non configurato")
+    monkeypatch.setattr(sync_engine, "_create_client", lambda: _FakeClient())
+    assert sync_engine.sync().message == "Primo sync"
+
+
+@pytest.mark.parametrize("content", ["{broken", '{"entries": [{}]}', '{"entries": null}'])
+def test_sync_corrupt_remote_returns_data_error(
+    sync_engine: SyncEngine, monkeypatch: pytest.MonkeyPatch, content: str
+) -> None:
+    from command_quiver.core.github_client import FileContent
+
+    class Client(_FakeClient):
+        def get_file(self, path: str) -> FileContent:
+            return FileContent(content=content, sha="old")
+
+    monkeypatch.setattr(sync_engine, "_create_client", lambda: Client())
+
+    result = sync_engine.sync()
+
+    assert result.success is False
+    assert result.message.startswith("Dati remoti corrotti:")
+    monkeypatch.setattr(sync_engine, "_create_client", lambda: _FakeClient())
+    assert sync_engine.sync().success is True
+
+
+def test_sync_failed_push_returns_humanized_error(
+    sync_engine: SyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Client(_FakeClient):
+        def put_file(self, path: str, content: str, sha: str = "") -> str:
+            raise GitHubApiError("raw", status_code=401)
+
+    monkeypatch.setattr(sync_engine, "_create_client", lambda: Client())
+
+    result = sync_engine.sync()
+
+    assert result.success is False
+    assert "Token GitHub non valido o scaduto" in result.message
+    monkeypatch.setattr(sync_engine, "_create_client", lambda: _FakeClient())
+    assert sync_engine.sync().success is True
