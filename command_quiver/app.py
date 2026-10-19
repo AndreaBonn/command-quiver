@@ -47,6 +47,7 @@ class CommandQuiverApp(Gtk.Application):
         self._sidebar: SidebarPanel | None = None
         self._sync_engine = None
         self._sync_debounce_id: int = 0
+        self._sync_running = False
 
     def do_startup(self) -> None:
         """Inizializzazione al primo avvio (database, impostazioni, sync)."""
@@ -73,14 +74,15 @@ class CommandQuiverApp(Gtk.Application):
 
     def _init_services(self) -> None:
         """Inizializza database, impostazioni, i18n e sync."""
-        self._db = Database()
-        self._db.initialize()
-
+        # Settings e lingua prima del DB: al primo avvio le sezioni nascono nella lingua scelta
         self._settings = load_settings()
 
         from command_quiver.core.i18n import init as i18n_init
 
         i18n_init(self._settings.language)
+
+        self._db = Database()
+        self._db.initialize(language=self._settings.language)
 
         self._init_sync()
 
@@ -98,8 +100,12 @@ class CommandQuiverApp(Gtk.Application):
 
     def _run_sync_background(self) -> None:
         """Esegue sync in un thread separato per non bloccare la UI GTK."""
-        if self._sync_engine is None:
+        if self._sync_engine is None or self._sync_running:
+            # Una sola sync alla volta: due push in parallelo usano lo stesso SHA (409)
             return
+        self._sync_running = True
+        if self._sidebar is not None:
+            self._sidebar.set_sync_pending()
 
         def _sync_thread() -> None:
             try:
@@ -116,6 +122,7 @@ class CommandQuiverApp(Gtk.Application):
 
     def _on_sync_complete(self, result) -> bool:
         """Callback sync completato (eseguita sul main thread GTK)."""
+        self._sync_running = False
         if result.success:
             logger.info("Sync completato: %s", result.message)
             # Refresh sidebar se visibile e se ci sono cambiamenti dal remoto
@@ -176,18 +183,23 @@ class CommandQuiverApp(Gtk.Application):
         logger.info("do_activate chiamato, sidebar=%s", self._sidebar)
         try:
             if self._sidebar is None:
-                self._sidebar = SidebarPanel(
-                    db=self._db,
-                    settings=self._settings,
-                    on_data_changed=self.on_data_changed,
-                    on_sync_toggled=self._on_sync_toggled,
-                    on_language_changed=self._change_language,
-                )
+                self._sidebar = self._create_sidebar()
                 self.add_window(self._sidebar)
             self._sidebar.present()
             logger.info("Sidebar presentata")
         except Exception:
             logger.exception("Errore in do_activate")
+
+    def _create_sidebar(self) -> SidebarPanel:
+        """Crea la finestra principale collegata ai callback dell'app."""
+        return SidebarPanel(
+            db=self._db,
+            settings=self._settings,
+            on_data_changed=self.on_data_changed,
+            on_sync_toggled=self._on_sync_toggled,
+            on_language_changed=self._change_language,
+            on_sync_now=self._run_sync_background,
+        )
 
     def _change_language(self, lang: str) -> None:
         """Cambia la lingua dell'interfaccia e ricostruisce la sidebar."""
@@ -207,17 +219,16 @@ class CommandQuiverApp(Gtk.Application):
         if self._sidebar is not None:
             old_sidebar = self._sidebar
             was_visible = old_sidebar.get_visible()
-            new_sidebar = SidebarPanel(
-                db=self._db,
-                settings=self._settings,
-                on_data_changed=self.on_data_changed,
-                on_sync_toggled=self._on_sync_toggled,
-                on_language_changed=self._change_language,
-            )
+            # Prima rende definitiva un'eventuale cancellazione in attesa: la nuova
+            # finestra rilegge il DB e non saprebbe di dover nascondere quella voce
+            old_sidebar.cancel_pending_timers()
+            # La nuova finestra nasce con la dimensione di quella che sostituisce
+            width, height = old_sidebar.get_default_size()
+            self._settings.window_width, self._settings.window_height = width, height
+            new_sidebar = self._create_sidebar()
             self.add_window(new_sidebar)
             self._sidebar = new_sidebar
             self.remove_window(old_sidebar)
-            old_sidebar.cancel_pending_timers()
             old_sidebar.destroy()
             if was_visible:
                 new_sidebar.present()
@@ -233,8 +244,13 @@ class CommandQuiverApp(Gtk.Application):
             GLib.source_remove(self._sync_debounce_id)
             self._sync_debounce_id = 0
 
-        # Sync finale con timeout (non blocca la chiusura se la rete è lenta)
-        if self._sync_engine is not None:
+        # Cancellazione in attesa (Annulla non più possibile): definitiva prima della sync
+        if self._sidebar is not None:
+            self._sidebar.cancel_pending_timers()
+
+        # Sync finale con timeout (non blocca la chiusura se la rete è lenta).
+        # Saltata se una sync è già in volo: due push con lo stesso SHA danno 409.
+        if self._sync_engine is not None and not self._sync_running:
             sync_thread = threading.Thread(
                 target=self._sync_engine.sync,
                 daemon=True,

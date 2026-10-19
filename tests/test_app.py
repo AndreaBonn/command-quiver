@@ -148,6 +148,7 @@ class TestChangeLanguage:
             app._db = MagicMock()
 
             old_sidebar = MagicMock()
+            old_sidebar.get_default_size.return_value = (640, 600)
             old_sidebar.get_visible.return_value = True
             app._sidebar = old_sidebar
 
@@ -436,3 +437,115 @@ class TestSyncLifecycle:
             mock_sidebar_cls.assert_called_once()
             mock_add.assert_called_once()
             mock_sidebar_cls.return_value.present.assert_called_once()
+
+
+class TestSyncGuard:
+    """Una sola sincronizzazione alla volta (avvio, debounce e "Sincronizza ora")."""
+
+    def test_second_sync_not_started_while_first_running(self) -> None:
+        from command_quiver.app import CommandQuiverApp
+
+        app = CommandQuiverApp()
+        app._sync_engine = MagicMock()
+        with patch("command_quiver.app.threading.Thread") as mock_thread:
+            app._run_sync_background()
+            app._run_sync_background()
+        assert mock_thread.call_count == 1
+
+    def test_sync_allowed_again_after_completion(self) -> None:
+        from command_quiver.app import CommandQuiverApp
+        from command_quiver.core.sync_engine import SyncResult
+
+        app = CommandQuiverApp()
+        app._sync_engine = MagicMock()
+        with patch("command_quiver.app.threading.Thread") as mock_thread:
+            app._run_sync_background()
+            app._on_sync_complete(SyncResult(success=True))
+            app._run_sync_background()
+        assert mock_thread.call_count == 2
+
+
+class TestReviewFixes:
+    """Cancellazione in attesa e sync finale (seconda review)."""
+
+    def test_language_switch_flushes_pending_delete_before_new_window(self) -> None:
+        with (
+            patch("command_quiver.app.Gtk"),
+            patch("command_quiver.app.Gdk"),
+            patch("command_quiver.app.save_settings"),
+            patch("command_quiver.app.SidebarPanel") as mock_sidebar_cls,
+        ):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._settings = MagicMock()
+            app._db = MagicMock()
+            calls: list[str] = []
+            old_sidebar = MagicMock()
+            old_sidebar.get_default_size.return_value = (640, 600)
+            old_sidebar.cancel_pending_timers.side_effect = lambda: calls.append("flush")
+            mock_sidebar_cls.side_effect = lambda **_kw: calls.append("new") or MagicMock()
+            app._sidebar = old_sidebar
+            with (
+                patch("command_quiver.core.i18n.get_language", return_value="it"),
+                patch("command_quiver.core.i18n.init"),
+                patch.object(app, "remove_window"),
+                patch.object(app, "add_window"),
+            ):
+                app._change_language("en")
+        assert calls == ["flush", "new"]
+
+    def test_shutdown_skips_final_sync_while_one_is_running(self) -> None:
+        with patch("command_quiver.app.Gtk"), patch("command_quiver.app.Gdk"):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._sync_engine = MagicMock()
+            app._sync_running = True
+            with patch("command_quiver.app.threading.Thread") as mock_thread:
+                app.do_shutdown()
+        mock_thread.assert_not_called()
+
+    def test_shutdown_flushes_pending_delete_before_final_sync(self) -> None:
+        with patch("command_quiver.app.Gtk"), patch("command_quiver.app.Gdk"):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            calls: list[str] = []
+            app._sidebar = MagicMock()
+            app._sidebar.cancel_pending_timers.side_effect = lambda: calls.append("flush")
+            app._sync_engine = MagicMock()
+            with patch("command_quiver.app.threading.Thread") as mock_thread:
+                mock_thread.side_effect = lambda **_kw: (
+                    calls.append("sync") or MagicMock(is_alive=MagicMock(return_value=False))
+                )
+                app.do_shutdown()
+        assert calls == ["flush", "sync"]
+
+
+def test_language_switch_keeps_current_window_size() -> None:
+    with (
+        patch("command_quiver.app.Gtk"),
+        patch("command_quiver.app.Gdk"),
+        patch("command_quiver.app.save_settings"),
+        patch("command_quiver.app.SidebarPanel") as mock_sidebar_cls,
+    ):
+        from command_quiver.app import CommandQuiverApp
+        from command_quiver.core.settings import Settings
+
+        app = CommandQuiverApp()
+        app._settings = Settings(window_width=640, window_height=600)
+        app._db = MagicMock()
+        old_sidebar = MagicMock()
+        old_sidebar.get_default_size.return_value = (640, 600)
+        old_sidebar.get_default_size.return_value = (900, 700)
+        app._sidebar = old_sidebar
+        with (
+            patch("command_quiver.core.i18n.get_language", return_value="it"),
+            patch("command_quiver.core.i18n.init"),
+            patch.object(app, "remove_window"),
+            patch.object(app, "add_window"),
+        ):
+            app._change_language("en")
+        settings = mock_sidebar_cls.call_args.kwargs["settings"]
+        assert (settings.window_width, settings.window_height) == (900, 700)

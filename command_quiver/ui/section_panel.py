@@ -11,6 +11,7 @@ from gi.repository import Gtk
 from command_quiver.core.i18n import t
 from command_quiver.db.queries import (
     DuplicateSectionError,
+    Entry,
     EntryRepository,
     Section,
     SectionRepository,
@@ -20,31 +21,19 @@ from command_quiver.ui.section_manager import (
     SectionRenameDialog,
     show_delete_section_dialog,
 )
+from command_quiver.ui.section_row import (
+    ALL_ENTRIES_ICON,
+    FALLBACK_ICON,
+    SectionRow,
+    resolve_section_icon,
+    theme_has_icon,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class SectionRow(Gtk.Box):
-    """Riga nella lista sezioni con attributi tipizzati."""
-
-    def __init__(
-        self,
-        label: str,
-        section_id: int | None,
-        section: Section | None = None,
-    ) -> None:
-        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self.add_css_class("section-row")
-        self.section_id = section_id
-        self.section = section
-
-        name_label = Gtk.Label(label=label, xalign=0)
-        name_label.set_hexpand(True)
-        self.append(name_label)
-
-
 class SectionPanelWidget(Gtk.Box):
-    """Pannello sezioni: lista sezioni con selezione, menu contestuale e CRUD.
+    """Pannello sezioni: lista sezioni con selezione, menu azioni e CRUD.
 
     Parameters
     ----------
@@ -61,12 +50,15 @@ class SectionPanelWidget(Gtk.Box):
         section_repo: SectionRepository,
         entry_repo: EntryRepository,
         on_section_changed: Callable[[int | None], None],
+        hidden_entry: Callable[[], Entry | None] = lambda: None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self._section_repo = section_repo
         self._entry_repo = entry_repo
         self._on_section_changed = on_section_changed
+        self._hidden_entry = hidden_entry
         self._current_section_id: int | None = None
+        self._sections: list[Section] = []
 
         self._build_ui()
 
@@ -78,6 +70,17 @@ class SectionPanelWidget(Gtk.Box):
     def current_section_id(self, value: int | None) -> None:
         self._current_section_id = value
 
+    @property
+    def current_section_name(self) -> str | None:
+        """Nome della sezione selezionata, None per "Tutti"."""
+        section = next((s for s in self._sections if s.id == self._current_section_id), None)
+        return section.name if section else None
+
+    def select_section(self, section_id: int | None) -> None:
+        """Seleziona una sezione dal codice (es. "Cerca in tutte le sezioni")."""
+        self._current_section_id = section_id
+        self._select_current()
+
     def _build_ui(self) -> None:
         """Costruisce il pannello sezioni."""
         section_header = Gtk.Label(label=t("sidebar.sections_header"), xalign=0)
@@ -87,10 +90,8 @@ class SectionPanelWidget(Gtk.Box):
         section_header.set_margin_bottom(4)
         self.append(section_header)
 
-        # Lista sezioni scrollabile
         scrolled = Gtk.ScrolledWindow(vexpand=True)
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-
         self._section_list = Gtk.ListBox()
         self._section_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self._section_list.add_css_class("section-list")
@@ -98,7 +99,6 @@ class SectionPanelWidget(Gtk.Box):
         scrolled.set_child(self._section_list)
         self.append(scrolled)
 
-        # Bottone nuova sezione
         add_section_btn = Gtk.Button(label=t("sidebar.new_section"))
         add_section_btn.add_css_class("flat")
         add_section_btn.set_margin_start(8)
@@ -108,52 +108,71 @@ class SectionPanelWidget(Gtk.Box):
         self.append(add_section_btn)
 
     def refresh(self) -> None:
-        """Ricarica la lista sezioni dal database."""
-        sections = self._section_repo.get_all()
-        total_count = self._entry_repo.count_all()
+        """Ricarica la lista sezioni dal database.
 
-        # Pulisci lista
-        while True:
-            row = self._section_list.get_row_at_index(0)
-            if row is None:
-                break
-            self._section_list.remove(row)
-
-        # Voce "Tutti"
-        all_row = self._create_row(
-            label=t("sidebar.all_entries", count=total_count),
-            section_id=None,
-        )
-        self._section_list.append(all_row)
-
-        # Sezioni dal database
-        for section in sections:
-            row = self._create_row(
-                label=t("sidebar.section_row", name=section.name, count=section.entry_count),
-                section_id=section.id,
-                section=section,
+        La voce in attesa di cancellazione (``hidden_entry``) non conta più nei
+        totali, anche se è ancora nel database finché l'utente può annullare.
+        """
+        hidden = self._hidden_entry()
+        self._sections = self._section_repo.get_all()
+        self._section_list.remove_all()
+        self._section_list.append(
+            SectionRow(
+                label=t("sidebar.all_entries"),
+                section_id=None,
+                count=self._entry_repo.count_all() - (1 if hidden else 0),
+                icon_name=ALL_ENTRIES_ICON if theme_has_icon(ALL_ENTRIES_ICON) else FALLBACK_ICON,
             )
+        )
+        for section in self._sections:
+            row = self._create_row(section)
+            if hidden is not None and hidden.section_id == section.id:
+                row.count_label.set_label(str(max(section.entry_count - 1, 0)))
             self._section_list.append(row)
-
-        # Seleziona la sezione attiva
         self._select_current()
 
-    def _create_row(
-        self,
-        label: str,
-        section_id: int | None,
-        section: Section | None = None,
-    ) -> SectionRow:
-        """Crea una riga nella lista sezioni."""
-        row = SectionRow(label=label, section_id=section_id, section=section)
+    def _create_row(self, section: Section) -> SectionRow:
+        """Crea la riga di una sezione con menu ⋯ e tasto destro."""
+        row = SectionRow(
+            label=section.name,
+            section_id=section.id,
+            section=section,
+            count=section.entry_count,
+            icon_name=resolve_section_icon(section.icon, theme_has_icon),
+        )
+        row.add_menu(self._build_menu(section))
 
-        # Menu contestuale (tasto destro) per rinomina/elimina
-        if section is not None:
-            gesture = Gtk.GestureClick(button=3)
-            gesture.connect("pressed", self._on_right_click, section)
-            row.add_controller(gesture)
-
+        gesture = Gtk.GestureClick(button=3)
+        gesture.connect("pressed", self._on_right_click, row)
+        row.add_controller(gesture)
         return row
+
+    def _build_menu(self, section: Section) -> Gtk.Popover:
+        """Menu della sezione. La sezione predefinita non si elimina: lo dice invece di fingere."""
+        popover = Gtk.Popover()
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        for side in ("top", "bottom", "start", "end"):
+            getattr(box, f"set_margin_{side}")(4)
+
+        rename_btn = Gtk.Button(label=t("sidebar.rename"))
+        rename_btn.add_css_class("flat")
+        rename_btn.connect("clicked", lambda _: self._do_rename(section, popover))
+        box.append(rename_btn)
+
+        if section.is_default:
+            note = Gtk.Label(label=t("sidebar.default_not_deletable"), wrap=True, xalign=0)
+            note.set_max_width_chars(28)
+            note.add_css_class("dim-label")
+            note.add_css_class("caption")
+            box.append(note)
+        else:
+            delete_btn = Gtk.Button(label=t("sidebar.delete"))
+            delete_btn.add_css_class("flat")
+            delete_btn.connect("clicked", lambda _: self._do_delete(section, popover))
+            box.append(delete_btn)
+
+        popover.set_child(box)
+        return popover
 
     def _select_current(self) -> None:
         """Seleziona la riga della sezione attualmente attiva."""
@@ -185,11 +204,7 @@ class SectionPanelWidget(Gtk.Box):
 
     def _on_new_section(self, _button: Gtk.Button) -> None:
         """Apre il dialog per creare una nuova sezione."""
-        parent = self.get_root()
-        dialog = SectionCreateDialog(
-            parent=parent,
-            on_create=self._on_section_created,
-        )
+        dialog = SectionCreateDialog(parent=self.get_root(), on_create=self._on_section_created)
         dialog.present()
 
     def _on_section_created(self, name: str) -> str | None:
@@ -203,41 +218,21 @@ class SectionPanelWidget(Gtk.Box):
 
     def _on_right_click(
         self,
-        gesture: Gtk.GestureClick,
+        _gesture: Gtk.GestureClick,
         _n_press: int,
-        x: float,
-        y: float,
-        section: Section,
+        _x: float,
+        _y: float,
+        row: SectionRow,
     ) -> None:
-        """Mostra il menu contestuale per una sezione (rinomina/elimina)."""
-        popup = Gtk.Popover()
-        popup_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        popup_box.set_margin_top(4)
-        popup_box.set_margin_bottom(4)
-        popup_box.set_margin_start(4)
-        popup_box.set_margin_end(4)
-
-        rename_btn = Gtk.Button(label=t("sidebar.rename"))
-        rename_btn.add_css_class("flat")
-        rename_btn.connect("clicked", lambda _: self._do_rename(section, popup))
-        popup_box.append(rename_btn)
-
-        delete_btn = Gtk.Button(label=t("sidebar.delete"))
-        delete_btn.add_css_class("flat")
-        delete_btn.connect("clicked", lambda _: self._do_delete(section, popup))
-        popup_box.append(delete_btn)
-
-        popup.set_child(popup_box)
-        widget = gesture.get_widget()
-        popup.set_parent(widget)
-        popup.popup()
+        """Il tasto destro apre lo stesso menu del pulsante ⋯."""
+        if row.menu_button is not None:
+            row.menu_button.popup()
 
     def _do_rename(self, section: Section, popup: Gtk.Popover) -> None:
         """Apre il dialog di rinomina sezione."""
         popup.popdown()
-        parent = self.get_root()
         dialog = SectionRenameDialog(
-            parent=parent,
+            parent=self.get_root(),
             section=section,
             on_rename=self._on_section_renamed,
         )
@@ -246,9 +241,8 @@ class SectionPanelWidget(Gtk.Box):
     def _do_delete(self, section: Section, popup: Gtk.Popover) -> None:
         """Avvia la procedura di eliminazione sezione."""
         popup.popdown()
-        parent = self.get_root()
         show_delete_section_dialog(
-            parent=parent,
+            parent=self.get_root(),
             section=section,
             on_confirm=self._on_section_deleted,
         )
@@ -268,5 +262,4 @@ class SectionPanelWidget(Gtk.Box):
             self._current_section_id = None
         self._section_repo.delete(section_id)
         self.refresh()
-        # Notifica il parent per aggiornare anche la lista voci
         self._on_section_changed(self._current_section_id)

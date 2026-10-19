@@ -112,7 +112,7 @@ class TestSidebarPanel:
 
         assert repo.count_all() == 0
 
-        sidebar._on_entry_saved(
+        sidebar._library.save(
             EntryCreate(
                 name="New",
                 content="echo new",
@@ -138,7 +138,7 @@ class TestSidebarPanel:
         )
 
         sidebar = self._create_sidebar(db_for_ui)
-        sidebar._on_entry_saved(
+        sidebar._library.save(
             EntryUpdate(
                 id=entry.id,
                 name="Updated",
@@ -168,7 +168,9 @@ class TestSidebarPanel:
         )
 
         sidebar = self._create_sidebar(db_for_ui)
-        sidebar._on_entry_deleted(entry.id)
+        sidebar._library.delete(entry.id)
+        # E7: la cancellazione diventa definitiva alla scadenza dell'annullamento
+        sidebar._pending_delete.flush()
         assert repo.get_by_id(entry.id) is None
 
     def test_on_section_created(
@@ -209,7 +211,26 @@ class TestSidebarPanel:
         section = SectionRepository(db_for_ui.connection).get_by_id(1)
         assert section.name == "Comandi"
 
-    def test_escape_hides_panel(
+    def test_escape_clears_search_instead_of_closing(
+        self,
+        gtk_init,
+        db_for_ui: Database,
+    ) -> None:
+        # M15: Esc svuota la ricerca; non chiude più la finestra (e quindi l'app)
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gdk
+
+        sidebar = self._create_sidebar(db_for_ui)
+        sidebar._search_entry.set_text("docker")
+        with patch.object(sidebar, "close") as mock_close:
+            result = sidebar._on_key_pressed(None, Gdk.KEY_Escape, 0, Gdk.ModifierType(0))
+        assert result is True
+        assert sidebar._search_entry.get_text() == ""
+        mock_close.assert_not_called()
+
+    def test_escape_with_empty_search_does_not_close(
         self,
         gtk_init,
         db_for_ui: Database,
@@ -220,8 +241,10 @@ class TestSidebarPanel:
         from gi.repository import Gdk
 
         sidebar = self._create_sidebar(db_for_ui)
-        result = sidebar._on_key_pressed(None, Gdk.KEY_Escape, 0, Gdk.ModifierType(0))
-        assert result is True
+        with patch.object(sidebar, "close") as mock_close:
+            result = sidebar._on_key_pressed(None, Gdk.KEY_Escape, 0, Gdk.ModifierType(0))
+        assert result is False
+        mock_close.assert_not_called()
 
     def test_close_request_saves_settings(
         self,
@@ -239,25 +262,28 @@ class TestSidebarPanel:
             mock_save.assert_called_once()
             saved = mock_save.call_args[0][0]
             assert saved.last_section_id == 3
+            # Si salva la dimensione predefinita (quella che GTK riapplica), non get_width:
+            # get_width esclude i margini e la finestra si stringeva a ogni avvio
+            assert (saved.window_width, saved.window_height) == sidebar.get_default_size()
 
-    def test_language_dropdown_invokes_callback_with_selected_code(
+    def test_language_menu_action_invokes_callback_with_code(
         self,
         gtk_init,
         db_for_ui: Database,
     ) -> None:
+        # S1: la lingua è nel menu principale (azione win.language)
+        from gi.repository import GLib
+
+        from command_quiver.core.i18n import init as i18n_init
         from command_quiver.ui.sidebar import SidebarPanel
 
+        i18n_init("it")
         callback = MagicMock()
-        sidebar = SidebarPanel(
-            db=db_for_ui,
-            settings=Settings(),  # lingua default "it"
-            on_language_changed=callback,
-        )
-        sidebar._lang_dropdown.set_selected(1)  # "en"
+        sidebar = SidebarPanel(db=db_for_ui, settings=Settings(), on_language_changed=callback)
 
         # idle_add eseguito subito per verificare l'invocazione del callback
         with patch("gi.repository.GLib.idle_add", side_effect=lambda fn, *a: fn(*a)):
-            sidebar._on_language_selected(sidebar._lang_dropdown, None)
+            sidebar.activate_action("win.language", GLib.Variant("s", "en"))
 
         callback.assert_called_once_with("en")
 
@@ -282,7 +308,7 @@ class TestSidebarPanel:
     ) -> None:
         sidebar = self._create_sidebar(db_for_ui)
 
-        with patch("command_quiver.ui.sidebar.EntryEditorDialog") as mock_dialog:
+        with patch("command_quiver.ui.library_controller.EntryEditorDialog") as mock_dialog:
             sidebar.open_new_entry_dialog()
             mock_dialog.assert_called_once()
 
@@ -318,7 +344,7 @@ class TestSidebarPanel:
         sidebar._refresh_entries()
 
         # Sposta la prima voce in giù
-        sidebar._on_entry_move(entry_id=e1.id, direction=1)
+        sidebar._library.move(entry_id=e1.id, direction=1)
 
         # Dopo lo swap, le posizioni devono essere scambiate
         updated_e1 = repo.get_by_id(e1.id)
@@ -341,7 +367,7 @@ class TestSidebarPanel:
 
         # Sposta verso l'alto -> fuori range -> noop
         original_pos = repo.get_by_id(e1.id).personal_pos
-        sidebar._on_entry_move(entry_id=e1.id, direction=-1)
+        sidebar._library.move(entry_id=e1.id, direction=-1)
         assert repo.get_by_id(e1.id).personal_pos == original_pos
 
     def test_entry_move_nonexistent_entry_noop(
@@ -351,7 +377,7 @@ class TestSidebarPanel:
     ) -> None:
         sidebar = self._create_sidebar(db_for_ui)
         # Non deve sollevare eccezioni
-        sidebar._on_entry_move(entry_id=9999, direction=1)
+        sidebar._library.move(entry_id=9999, direction=1)
 
     def test_on_entry_click_opens_editor(
         self,
@@ -363,7 +389,7 @@ class TestSidebarPanel:
 
         sidebar = self._create_sidebar(db_for_ui)
 
-        with patch("command_quiver.ui.sidebar.EntryEditorDialog") as mock_dialog:
+        with patch("command_quiver.ui.library_controller.EntryEditorDialog") as mock_dialog:
             sidebar._on_entry_click(entry)
             mock_dialog.assert_called_once()
             # Verifica che entry viene passato al dialog

@@ -51,14 +51,27 @@ class TestEntryEditorValidation:
             on_save=on_save or MagicMock(),
         )
 
-    def test_validate_rejects_empty_name(self, gtk_init) -> None:
+    def test_validate_accepts_empty_name(self, gtk_init) -> None:
+        # E3: il nome è facoltativo, si ricava dalla prima riga del contenuto
         dialog = self._create_dialog()
         dialog._name_entry.set_text("")
-        buf = dialog._content_view.get_buffer()
-        buf.set_text("some content")
+        dialog._content_view.get_buffer().set_text("some content")
 
-        assert dialog._validate() is False
-        assert dialog._name_error.get_visible() is True
+        assert dialog._validate() is True
+
+    def test_empty_name_taken_from_first_content_line(self, gtk_init) -> None:
+        dialog = self._create_dialog()
+        dialog._name_entry.set_text("   ")
+        dialog._content_view.get_buffer().set_text("\ngit log --oneline -10\nsecond")
+
+        assert dialog._collect_data().name == "git log --oneline -10"
+
+    def test_typed_name_wins_over_content(self, gtk_init) -> None:
+        dialog = self._create_dialog()
+        dialog._name_entry.set_text("Log")
+        dialog._content_view.get_buffer().set_text("git log")
+
+        assert dialog._collect_data().name == "Log"
 
     def test_validate_rejects_empty_content(self, gtk_init) -> None:
         dialog = self._create_dialog()
@@ -67,14 +80,6 @@ class TestEntryEditorValidation:
 
         assert dialog._validate() is False
         assert dialog._content_error.get_visible() is True
-
-    def test_validate_rejects_whitespace_only_name(self, gtk_init) -> None:
-        dialog = self._create_dialog()
-        dialog._name_entry.set_text("   ")
-        buf = dialog._content_view.get_buffer()
-        buf.set_text("content")
-
-        assert dialog._validate() is False
 
     def test_validate_rejects_whitespace_only_content(self, gtk_init) -> None:
         dialog = self._create_dialog()
@@ -91,24 +96,20 @@ class TestEntryEditorValidation:
         buf.set_text("Valid content")
 
         assert dialog._validate() is True
-        assert dialog._name_error.get_visible() is False
         assert dialog._content_error.get_visible() is False
 
     def test_validate_clears_errors_on_valid_input(self, gtk_init) -> None:
         dialog = self._create_dialog()
 
         # Prima validazione fallita
-        dialog._name_entry.set_text("")
         buf = dialog._content_view.get_buffer()
         buf.set_text("")
         dialog._validate()
-        assert dialog._name_error.get_visible() is True
+        assert dialog._content_error.get_visible() is True
 
         # Seconda validazione con input valido
-        dialog._name_entry.set_text("Name")
         buf.set_text("Content")
         dialog._validate()
-        assert dialog._name_error.get_visible() is False
         assert dialog._content_error.get_visible() is False
 
 
@@ -137,13 +138,14 @@ class TestEntryEditorDataCollection:
         dialog._name_entry.set_text("New Entry")
         buf = dialog._content_view.get_buffer()
         buf.set_text("echo test")
+        # Testo scritto ma non confermato con Invio: non va perso al salvataggio
         dialog._tag_entry.set_text("test,new")
 
         data = dialog._collect_data()
         assert isinstance(data, EntryCreate)
         assert data.name == "New Entry"
         assert data.content == "echo test"
-        assert data.tags == "test,new"
+        assert data.tags == "test, new"
         assert data.type == "prompt"  # Default
 
     def test_collect_data_returns_entry_update_for_edit(self, gtk_init) -> None:
@@ -274,7 +276,9 @@ class TestEntryEditorPopulation:
             entry=entry,
             on_save=MagicMock(),
         )
-        assert dialog._tag_entry.get_text() == "docker,build"
+        # E5: i tag esistenti diventano etichette, il campo di testo resta libero
+        assert dialog._tag_input.tags == ["docker", "build"]
+        assert dialog._tag_entry.get_text() == ""
 
     def test_title_differs_for_create_and_edit(self, gtk_init) -> None:
         import gi
@@ -544,3 +548,114 @@ class TestEntryEditorDelete:
 
         # Non deve sollevare eccezioni anche senza callback
         dialog._do_save()
+
+
+@requires_display
+class TestEntryEditorUx:
+    """Sezione preimpostata, segnaposto del contenuto, tag a etichette."""
+
+    def _dialog(self, **kwargs):
+        import gi
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gtk
+
+        from command_quiver.ui.entry_editor import EntryEditorDialog
+
+        return EntryEditorDialog(parent=Gtk.Window(), sections=_make_sections(), **kwargs)
+
+    def test_new_entry_preselects_open_section(self, gtk_init) -> None:
+        dialog = self._dialog(initial_section_id=2)
+        dialog._content_view.get_buffer().set_text("x")
+        assert dialog._collect_data().section_id == 2
+
+    def test_new_entry_from_all_keeps_first_section(self, gtk_init) -> None:
+        dialog = self._dialog(initial_section_id=None)
+        dialog._content_view.get_buffer().set_text("x")
+        assert dialog._collect_data().section_id == 1
+
+    def test_edit_keeps_entry_section_over_open_section(self, gtk_init) -> None:
+        dialog = self._dialog(entry=_make_entry(), initial_section_id=2)
+        assert dialog._collect_data().section_id == _make_entry().section_id
+
+    def test_content_placeholder_follows_type_and_hides_when_typing(self, gtk_init) -> None:
+        dialog = self._dialog()
+        assert dialog._content_placeholder.get_visible() is True
+        assert dialog._content_placeholder.get_label().startswith("Es. Riassumi")
+
+        dialog._radio_shell.set_active(True)
+        assert "git log" in dialog._content_placeholder.get_label()
+
+        dialog._content_view.get_buffer().set_text("ls")
+        assert dialog._content_placeholder.get_visible() is False
+
+    def test_enter_turns_typed_tag_into_label(self, gtk_init) -> None:
+        dialog = self._dialog()
+        dialog._tag_entry.set_text("deploy")
+        dialog._tag_input.commit_pending()
+        assert dialog._tag_input.tags == ["deploy"]
+        assert dialog._tag_entry.get_text() == ""
+
+    def test_known_tag_suggestion_adds_without_duplicates(self, gtk_init) -> None:
+        dialog = self._dialog(known_tags=["git", "deploy"])
+        dialog._tag_input.add_tag("git")
+        dialog._tag_input.add_tag("Git")
+        dialog._content_view.get_buffer().set_text("x")
+        assert dialog._collect_data().tags == "git"
+
+    def test_removed_tag_not_saved(self, gtk_init) -> None:
+        dialog = self._dialog(entry=_make_entry())
+        dialog._tag_input.remove_tag("docker")
+        assert dialog._collect_data().tags == "build"
+
+
+@requires_display
+class TestEntryEditorSectionFollowsType:
+    """Voce nuova da "Tutti": la sezione segue il tipo finché l'utente non la sceglie."""
+
+    def _dialog(self):
+        from gi.repository import Gtk
+
+        from command_quiver.ui.entry_editor import EntryEditorDialog
+
+        sections = [
+            Section(id=1, name="Comandi shell", icon="utilities-terminal", position=0),
+            Section(id=2, name="Prompt AI", icon="format-text-bold", position=1),
+            Section(id=3, name="Generale", icon="folder", position=2, is_default=1),
+        ]
+        dialog = EntryEditorDialog(parent=Gtk.Window(), sections=sections)
+        dialog._content_view.get_buffer().set_text("x")
+        return dialog
+
+    def test_default_prompt_type_selects_prompt_section(self, gtk_init) -> None:
+        assert self._dialog()._collect_data().section_id == 2
+
+    def test_switching_to_shell_moves_to_shell_section(self, gtk_init) -> None:
+        dialog = self._dialog()
+        dialog._radio_shell.set_active(True)
+        assert dialog._collect_data().section_id == 1
+
+    def test_manual_choice_is_not_overridden(self, gtk_init) -> None:
+        dialog = self._dialog()
+        dialog._section_dropdown.set_selected(2)  # Generale, scelta a mano
+        dialog._radio_shell.set_active(True)
+        assert dialog._collect_data().section_id == 3
+
+
+@requires_display
+class TestEntryEditorDeleteWithoutConfirmation:
+    """E7: Elimina non chiede più conferma; l'annullamento arriva dall'avviso nella lista."""
+
+    def test_delete_calls_callback_immediately_and_closes(self, gtk_init) -> None:
+        from gi.repository import Gtk
+
+        from command_quiver.ui.entry_editor import EntryEditorDialog
+
+        on_delete = MagicMock()
+        dialog = EntryEditorDialog(
+            parent=Gtk.Window(), sections=_make_sections(), entry=_make_entry(), on_delete=on_delete
+        )
+        with patch.object(dialog, "close") as mock_close:
+            dialog._on_delete_clicked(None)
+        on_delete.assert_called_once_with(_make_entry().id)
+        mock_close.assert_called_once()

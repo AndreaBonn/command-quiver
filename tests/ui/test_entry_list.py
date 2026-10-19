@@ -194,54 +194,6 @@ class TestEntryListWidget:
 
 
 @requires_display
-class TestEntryRowMoveButtons:
-    """Test bottoni spostamento voci."""
-
-    def test_creates_with_move_buttons(self, gtk_init) -> None:
-        from command_quiver.ui.entry_list import EntryRow
-
-        entry = _make_entry()
-        mock_move = MagicMock()
-        row = EntryRow(
-            entry=entry,
-            on_edit=MagicMock(),
-            on_move=mock_move,
-            show_move=True,
-            is_first=False,
-            is_last=False,
-        )
-        assert row.entry == entry
-
-    def test_first_entry_up_button_disabled(self, gtk_init) -> None:
-        from command_quiver.ui.entry_list import EntryRow
-
-        entry = _make_entry()
-        row = EntryRow(
-            entry=entry,
-            on_edit=MagicMock(),
-            on_move=MagicMock(),
-            show_move=True,
-            is_first=True,
-            is_last=False,
-        )
-        assert row.entry == entry
-
-    def test_last_entry_down_button_disabled(self, gtk_init) -> None:
-        from command_quiver.ui.entry_list import EntryRow
-
-        entry = _make_entry()
-        row = EntryRow(
-            entry=entry,
-            on_edit=MagicMock(),
-            on_move=MagicMock(),
-            show_move=True,
-            is_first=False,
-            is_last=True,
-        )
-        assert row.entry == entry
-
-
-@requires_display
 class TestEntryRowEditClick:
     """Test click su bottone modifica."""
 
@@ -278,3 +230,84 @@ class TestEntryRowTerminalError:
 
         widget.update_entries(entries, show_move=True)
         assert len(widget.entries) == 3
+
+
+@requires_display
+class TestKeyboardReorder:
+    """M8: nell'ordine Personale Alt+↑/↓ sposta la riga selezionata (al posto delle frecce)."""
+
+    def _widget(self, on_move: MagicMock, show_move: bool = True):
+        from command_quiver.ui.entry_list import EntryListWidget
+
+        widget = EntryListWidget(on_entry_edit=MagicMock(), on_move=on_move)
+        widget.update_entries([_make_entry(entry_id=i, name=f"E{i}") for i in range(3)], show_move)
+        widget._list_box.set_focus_child(widget._list_box.get_row_at_index(1))
+        return widget
+
+    def _press(self, widget, keyval: int, alt: bool = True) -> bool:
+        from gi.repository import Gdk
+
+        state = Gdk.ModifierType.ALT_MASK if alt else Gdk.ModifierType(0)
+        return widget._on_key_pressed(None, keyval, 0, state)
+
+    def test_alt_up_moves_focused_row_up(self, gtk_init) -> None:
+        from gi.repository import Gdk
+
+        on_move = MagicMock()
+        assert self._press(self._widget(on_move), Gdk.KEY_Up) is True
+        on_move.assert_called_once_with(1, -1)
+
+    def test_alt_down_moves_focused_row_down(self, gtk_init) -> None:
+        from gi.repository import Gdk
+
+        on_move = MagicMock()
+        self._press(self._widget(on_move), Gdk.KEY_Down)
+        on_move.assert_called_once_with(1, 1)
+
+    def test_plain_arrows_keep_normal_navigation(self, gtk_init) -> None:
+        from gi.repository import Gdk
+
+        on_move = MagicMock()
+        assert self._press(self._widget(on_move), Gdk.KEY_Down, alt=False) is False
+        on_move.assert_not_called()
+
+    def test_no_move_outside_personal_order(self, gtk_init) -> None:
+        from gi.repository import Gdk
+
+        on_move = MagicMock()
+        assert self._press(self._widget(on_move, show_move=False), Gdk.KEY_Up) is False
+        on_move.assert_not_called()
+
+    def test_rows_have_no_arrow_buttons(self, gtk_init) -> None:
+        from gi.repository import Gtk
+
+        widget = self._widget(MagicMock())
+        row = widget._list_box.get_row_at_index(0).get_child()
+        icons = []
+        pending = [row]
+        while pending:
+            child = pending.pop().get_first_child()
+            while child is not None:
+                if isinstance(child, Gtk.Button):
+                    icons.append(child.get_icon_name())
+                pending.append(child)
+                child = child.get_next_sibling()
+        assert "edit-copy-symbolic" in icons  # la ricerca vede davvero i pulsanti
+        assert "go-up-symbolic" not in icons
+        assert "go-down-symbolic" not in icons
+
+
+@requires_display
+def test_alt_arrow_on_empty_state_does_not_crash(gtk_init) -> None:
+    from gi.repository import Gdk, Gtk
+
+    from command_quiver.ui.entry_list import EntryListWidget
+
+    on_move = MagicMock()
+    widget = EntryListWidget(on_entry_edit=MagicMock(), on_move=on_move)
+    placeholder = Gtk.Box()
+    widget.update_entries([], show_move=True, empty_state=placeholder)
+    with patch.object(widget._list_box, "get_focus_child", return_value=placeholder):
+        handled = widget._on_key_pressed(None, Gdk.KEY_Up, 0, Gdk.ModifierType.ALT_MASK)
+    assert handled is False
+    on_move.assert_not_called()

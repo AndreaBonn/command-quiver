@@ -6,13 +6,24 @@ from collections.abc import Callable
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gdk, GLib, Gtk
+from gi.repository import Gdk, Gtk
 
 from command_quiver.core.clipboard import copy_to_clipboard
 from command_quiver.core.i18n import t
+from command_quiver.core.presentation import join_tags, name_from_content, split_tags
 from command_quiver.db.queries import Entry, EntryCreate, EntryUpdate, Section
+from command_quiver.ui.editor_widgets import (
+    ContentField,
+    SectionPicker,
+    button_with_hint,
+    caption,
+    type_card,
+)
+from command_quiver.ui.tag_input import TagInput
 
 logger = logging.getLogger(__name__)
+
+_NAME_MAX_LENGTH = 100
 
 
 class EntryEditorDialog(Gtk.Window):
@@ -31,26 +42,28 @@ class EntryEditorDialog(Gtk.Window):
         entry: Entry | None = None,
         on_save: Callable[[EntryCreate | EntryUpdate], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
+        initial_section_id: int | None = None,
+        known_tags: list[str] | None = None,
     ) -> None:
         super().__init__(
             title=t("editor.title_edit") if entry else t("editor.title_new"),
             transient_for=parent,
             modal=True,
-            default_width=500,
-            default_height=480,
+            default_width=520,
+            default_height=600,
         )
         self._entry = entry
         self._sections = sections
         self._on_save = on_save
         self._on_delete = on_delete
         self._is_edit = entry is not None
+        self._known_tags = known_tags or []
 
         self._setup_keyboard_shortcuts()
         self._build_ui()
-        self._populate_fields()
+        self._populate_fields(initial_section_id)
 
     def _setup_keyboard_shortcuts(self) -> None:
-        """Configura le scorciatoie da tastiera."""
         controller = Gtk.EventControllerKey()
         controller.connect("key-pressed", self._on_key_pressed)
         self.add_controller(controller)
@@ -64,11 +77,9 @@ class EntryEditorDialog(Gtk.Window):
     ) -> bool:
         """Gestisce le scorciatoie da tastiera."""
         ctrl = state & Gdk.ModifierType.CONTROL_MASK
-
         if keyval == Gdk.KEY_Escape:
             self.close()
             return True
-
         if ctrl:
             if keyval == Gdk.KEY_s:
                 self._do_save()
@@ -76,196 +87,168 @@ class EntryEditorDialog(Gtk.Window):
             if keyval == Gdk.KEY_w:
                 self.close()
                 return True
-            if keyval == Gdk.KEY_Return:
+            if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
                 self._do_save_and_copy()
                 return True
-
         return False
 
+    # --- Costruzione ---
+
     def _build_ui(self) -> None:
-        """Costruisce l'interfaccia del dialog."""
-        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        main_box.set_margin_top(16)
-        main_box.set_margin_bottom(16)
-        main_box.set_margin_start(16)
-        main_box.set_margin_end(16)
-        self.set_child(main_box)
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        for side in ("top", "bottom", "start", "end"):
+            getattr(main_box, f"set_margin_{side}")(16)
+        scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
+        scroller.set_child(main_box)
+        # Pulsanti fuori dallo scroll: restano visibili anche con contenuti lunghi
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        outer.append(scroller)
+        buttons = self._build_buttons()
+        for side in ("bottom", "start", "end"):
+            getattr(buttons, f"set_margin_{side}")(16)
+        buttons.set_margin_top(8)
+        outer.append(buttons)
+        self.set_child(outer)
 
-        # --- Campo Nome ---
-        name_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        name_label = Gtk.Label(label=t("editor.name_label"), xalign=0)
-        name_label.add_css_class("caption")
-        name_box.append(name_label)
+        main_box.append(self._build_name_field())
+        main_box.append(self._build_type_selector())
+        main_box.append(self._build_section_field())
+        main_box.append(self._build_content_field())
 
-        self._name_entry = Gtk.Entry(
-            placeholder_text=t("editor.name_placeholder"),
-            max_length=100,
-        )
-        name_box.append(self._name_entry)
-
-        self._name_error = Gtk.Label(label="", xalign=0, visible=False)
-        self._name_error.add_css_class("error-label")
-        name_box.append(self._name_error)
-        main_box.append(name_box)
-
-        # --- Tipo (radio button) ---
-        type_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
-        type_label = Gtk.Label(label=t("editor.type_label"))
-        type_box.append(type_label)
-
-        self._radio_prompt = Gtk.CheckButton(label=t("editor.type_prompt"))
-        self._radio_shell = Gtk.CheckButton(label=t("editor.type_shell"))
-        self._radio_shell.set_group(self._radio_prompt)
-        self._radio_prompt.set_active(True)
-        type_box.append(self._radio_prompt)
-        type_box.append(self._radio_shell)
-        main_box.append(type_box)
-
-        # --- Sezione (dropdown) ---
-        section_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        section_label = Gtk.Label(label=t("editor.section_label"), xalign=0)
-        section_label.add_css_class("caption")
-        section_box.append(section_label)
-
-        self._section_dropdown = Gtk.DropDown()
-        section_names = [s.name for s in self._sections]
-        self._section_dropdown.set_model(Gtk.StringList.new(section_names))
-        section_box.append(self._section_dropdown)
-        main_box.append(section_box)
-
-        # --- Contenuto (text area multiriga) ---
-        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        content_label = Gtk.Label(label=t("editor.content_label"), xalign=0)
-        content_label.add_css_class("caption")
-        content_box.append(content_label)
-
-        self._content_view = Gtk.TextView(
-            vexpand=True,
-            monospace=True,
-            wrap_mode=Gtk.WrapMode.WORD_CHAR,
-            top_margin=8,
-            bottom_margin=8,
-            left_margin=8,
-            right_margin=8,
-        )
-        self._content_view.add_css_class("content-editor")
-
-        content_scroll = Gtk.ScrolledWindow(vexpand=True, min_content_height=150)
-        content_scroll.set_child(self._content_view)
-        content_scroll.add_css_class("content-scroll")
-        content_box.append(content_scroll)
-
-        self._content_error = Gtk.Label(label="", xalign=0, visible=False)
-        self._content_error.add_css_class("error-label")
-        content_box.append(self._content_error)
-        main_box.append(content_box)
-
-        # --- Tag ---
         tag_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        tag_label = Gtk.Label(label=t("editor.tags_label"), xalign=0)
-        tag_label.add_css_class("caption")
-        tag_box.append(tag_label)
-
-        self._tag_entry = Gtk.Entry(placeholder_text=t("editor.tags_placeholder"))
-        tag_box.append(self._tag_entry)
+        tag_box.append(caption(t("editor.tags_label")))
+        self._tag_input = TagInput(known_tags=self._known_tags)
+        self._tag_entry = self._tag_input.entry
+        tag_box.append(self._tag_input)
         main_box.append(tag_box)
 
-        # --- Bottoni azione ---
-        button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        button_box.set_halign(Gtk.Align.END)
+    def _build_name_field(self) -> Gtk.Box:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        box.append(caption(t("editor.name_label")))
+        self._name_entry = Gtk.Entry(
+            placeholder_text=t("editor.name_placeholder"), max_length=_NAME_MAX_LENGTH
+        )
+        box.append(self._name_entry)
+        hint = Gtk.Label(label=t("editor.name_hint"), xalign=0, wrap=True)
+        hint.add_css_class("dim-label")
+        hint.add_css_class("caption")
+        box.append(hint)
+        return box
 
-        # Elimina (solo in modifica, allineato a sinistra)
+    def _build_type_selector(self) -> Gtk.Box:
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, homogeneous=True)
+        self._radio_prompt = type_card(
+            t("editor.type_prompt"), t("editor.type_prompt_desc"), "edit-paste-symbolic"
+        )
+        self._radio_shell = type_card(
+            t("editor.type_shell"), t("editor.type_shell_desc"), "utilities-terminal-symbolic"
+        )
+        self._radio_shell.set_group(self._radio_prompt)
+        self._radio_prompt.set_active(True)
+        for card in (self._radio_prompt, self._radio_shell):
+            card.connect("toggled", lambda _: self._on_type_toggled())
+        box.append(self._radio_prompt)
+        box.append(self._radio_shell)
+        return box
+
+    def _build_section_field(self) -> Gtk.Box:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        box.append(caption(t("editor.section_label")))
+        self._section_dropdown = SectionPicker(self._sections)
+        box.append(self._section_dropdown)
+        return box
+
+    def _build_content_field(self) -> Gtk.Box:
+        field = ContentField(t("editor.content_label"))
+        self._content_view = field.view
+        self._content_placeholder = field.placeholder
+        self._content_error = field.error
+        self._content_view.get_buffer().connect("changed", lambda _: self._update_placeholder())
+        return field
+
+    def _build_buttons(self) -> Gtk.Box:
+        button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        button_box.set_halign(Gtk.Align.FILL)
+        spacer = Gtk.Box(hexpand=True)
         if self._is_edit:
             delete_btn = Gtk.Button(label=t("editor.btn_delete"))
             delete_btn.add_css_class("destructive-action")
             delete_btn.connect("clicked", self._on_delete_clicked)
-            delete_btn.set_hexpand(True)
-            delete_btn.set_halign(Gtk.Align.START)
             button_box.append(delete_btn)
+        button_box.append(spacer)
 
         cancel_btn = Gtk.Button(label=t("editor.btn_cancel"))
         cancel_btn.connect("clicked", lambda _: self.close())
         button_box.append(cancel_btn)
 
-        save_copy_btn = Gtk.Button(label=t("editor.btn_save_copy"))
+        save_copy_btn = button_with_hint(t("editor.btn_save_copy"), "Ctrl+↵")
         save_copy_btn.connect("clicked", lambda _: self._do_save_and_copy())
         button_box.append(save_copy_btn)
 
-        save_btn = Gtk.Button(label=t("editor.btn_save"))
+        save_btn = button_with_hint(t("editor.btn_save"), "Ctrl+S")
         save_btn.add_css_class("suggested-action")
         save_btn.connect("clicked", lambda _: self._do_save())
         button_box.append(save_btn)
+        return button_box
 
-        main_box.append(button_box)
+    def _update_placeholder(self) -> None:
+        key = self._entry_type()
+        self._content_placeholder.set_label(t(f"editor.content_placeholder_{key}"))
+        self._content_placeholder.set_visible(self._content_view.get_buffer().get_char_count() == 0)
 
-    def _populate_fields(self) -> None:
-        """Popola i campi con i dati della voce in modifica."""
-        if self._entry is None:
-            return
+    # --- Dati ---
 
-        self._name_entry.set_text(self._entry.name)
+    def _entry_type(self) -> str:
+        return "shell" if self._radio_shell.get_active() else "prompt"
 
-        if self._entry.type == "shell":
-            self._radio_shell.set_active(True)
+    def _on_type_toggled(self) -> None:
+        self._update_placeholder()
+        self._section_dropdown.on_type_changed(self._entry_type())
+
+    def _populate_fields(self, initial_section_id: int | None) -> None:
+        """Popola i campi: dalla voce in modifica, o con la sezione aperta per una voce nuova.
+
+        Voce nuova da "Tutti" (nessuna sezione aperta): la sezione segue il tipo
+        finché l'utente non ne sceglie una a mano.
+        """
+        if self._entry is None and initial_section_id is None:
+            self._section_dropdown.follow_type(self._entry_type())
         else:
-            self._radio_prompt.set_active(True)
+            self._section_dropdown.select_section(
+                self._entry.section_id if self._entry else initial_section_id
+            )
 
-        # Seleziona la sezione corretta nel dropdown
-        for i, section in enumerate(self._sections):
-            if section.id == self._entry.section_id:
-                self._section_dropdown.set_selected(i)
-                break
+        if self._entry is not None:
+            self._name_entry.set_text(self._entry.name)
+            if self._entry.type == "shell":
+                self._radio_shell.set_active(True)
+            self._content_view.get_buffer().set_text(self._entry.content)
+            self._tag_input.set_tags(split_tags(self._entry.tags))
+        self._update_placeholder()
 
-        # Popola il contenuto
-        buffer = self._content_view.get_buffer()
-        buffer.set_text(self._entry.content)
-
-        # Tag
-        self._tag_entry.set_text(self._entry.tags)
-
-    def _validate(self) -> bool:
-        """Valida i campi obbligatori. Restituisce True se validi."""
-        is_valid = True
-
-        # Validazione nome
-        name = self._name_entry.get_text().strip()
-        if not name:
-            self._name_error.set_label(t("editor.error_name_required"))
-            self._name_error.set_visible(True)
-            self._name_entry.add_css_class("error")
-            is_valid = False
-        else:
-            self._name_error.set_visible(False)
-            self._name_entry.remove_css_class("error")
-
-        # Validazione contenuto
+    def _content_text(self) -> str:
         buffer = self._content_view.get_buffer()
         start, end = buffer.get_bounds()
-        content = buffer.get_text(start, end, include_hidden_chars=False).strip()
-        if not content:
+        return buffer.get_text(start, end, include_hidden_chars=False).strip()
+
+    def _validate(self) -> bool:
+        """Solo il contenuto è obbligatorio: il nome, se manca, si ricava dal contenuto."""
+        if not self._content_text():
             self._content_error.set_label(t("editor.error_content_required"))
             self._content_error.set_visible(True)
             self._content_view.add_css_class("error")
-            is_valid = False
-        else:
-            self._content_error.set_visible(False)
-            self._content_view.remove_css_class("error")
-
-        return is_valid
+            return False
+        self._content_error.set_visible(False)
+        self._content_view.remove_css_class("error")
+        return True
 
     def _collect_data(self) -> EntryCreate | EntryUpdate:
         """Raccoglie i dati dai campi del form."""
-        name = self._name_entry.get_text().strip()
-        entry_type = "shell" if self._radio_shell.get_active() else "prompt"
-
-        selected_idx = self._section_dropdown.get_selected()
-        section_id = self._sections[selected_idx].id if selected_idx < len(self._sections) else None
-
-        buffer = self._content_view.get_buffer()
-        start, end = buffer.get_bounds()
-        content = buffer.get_text(start, end, include_hidden_chars=False).strip()
-
-        tags = self._tag_entry.get_text().strip()
+        content = self._content_text()
+        name = self._name_entry.get_text().strip() or name_from_content(content)
+        entry_type = self._entry_type()
+        section_id = self._section_dropdown.selected_section_id
+        tags = join_tags(self._tag_input.tags)
 
         if self._is_edit:
             return EntryUpdate(
@@ -277,18 +260,13 @@ class EntryEditorDialog(Gtk.Window):
                 tags=tags,
             )
         return EntryCreate(
-            name=name,
-            content=content,
-            section_id=section_id,
-            type=entry_type,
-            tags=tags,
+            name=name, content=content, section_id=section_id, type=entry_type, tags=tags
         )
 
     def _do_save(self) -> None:
         """Salva la voce e chiude il dialog."""
         if not self._validate():
             return
-
         data = self._collect_data()
         if self._on_save:
             self._on_save(data)
@@ -298,35 +276,14 @@ class EntryEditorDialog(Gtk.Window):
         """Salva, copia il contenuto negli appunti e chiude."""
         if not self._validate():
             return
-
         data = self._collect_data()
         copy_to_clipboard(data.content)
-
         if self._on_save:
             self._on_save(data)
         self.close()
 
-    def _on_delete_clicked(self, _button: Gtk.Button) -> None:
-        """Richiede conferma prima di eliminare la voce."""
-        dialog = Gtk.AlertDialog(
-            message=t("editor.confirm_delete_title"),
-            detail=t("editor.confirm_delete_detail", name=self._entry.name),
-        )
-        dialog.set_buttons([t("common.cancel"), t("common.delete")])
-        dialog.set_cancel_button(0)
-        dialog.set_default_button(0)
-        dialog.choose(self, None, self._on_delete_confirmed)
-
-    def _on_delete_confirmed(
-        self,
-        dialog: Gtk.AlertDialog,
-        result,
-    ) -> None:
-        """Callback conferma eliminazione."""
-        try:
-            choice = dialog.choose_finish(result)
-            if choice == 1 and self._on_delete:  # "Elimina"
-                self._on_delete(self._entry.id)
-                self.close()
-        except GLib.Error:
-            logger.debug("Dialog eliminazione annullato dall'utente")
+    def _on_delete_clicked(self, _button: Gtk.Button | None) -> None:
+        """Elimina senza conferma: la lista mostra "Eliminata · Annulla" per qualche secondo."""
+        if self._on_delete and self._entry is not None:
+            self._on_delete(self._entry.id)
+        self.close()

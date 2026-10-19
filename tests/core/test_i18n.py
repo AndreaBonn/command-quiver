@@ -44,13 +44,13 @@ class TestTranslation:
 
     def test_interpolation_single_param(self) -> None:
         init("it")
-        result = t("sidebar.all_entries", count=42)
-        assert result == "Tutti (42)"
+        result = t("toast.samples_added", count=6)
+        assert result == "Aggiunte 6 voci di esempio"
 
     def test_interpolation_multiple_params(self) -> None:
         init("en")
-        result = t("sidebar.section_row", name="Git", count=5)
-        assert result == "Git (5)"
+        result = t("status.ok_counts", when="just now", pulled=2, pushed=5)
+        assert result == "Synced just now: 2 received, 5 sent"
 
     def test_missing_key_returns_key(self) -> None:
         init("it")
@@ -58,13 +58,13 @@ class TestTranslation:
 
     def test_missing_interpolation_param_returns_template(self) -> None:
         init("it")
-        result = t("sidebar.all_entries")
+        result = t("toast.samples_added")
         assert "{count}" in result
 
     def test_wrong_interpolation_kwargs_returns_template(self) -> None:
         """t() con kwargs errati (KeyError) restituisce il template non interpolato."""
         init("it")
-        result = t("sidebar.all_entries", wrong_param=42)
+        result = t("toast.samples_added", wrong_param=42)
         assert "{count}" in result
         assert "42" not in result
 
