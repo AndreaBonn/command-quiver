@@ -273,3 +273,117 @@ avvisare. Va deciso come comportarsi oltre quel limite.
 - Complessità: Alta
 - Stato: Completato su `main` (commit `9799abc`..`c674f83`, nessun push); aperti B13,
   due classi UI oltre i limiti e il test-audit incompleto
+
+## 2026-10-19 | Sessione #4 [REFACTOR] [TEST] [FIX]
+
+### Richiesta
+Fase 2 della scomposizione dei moduli grandi e audit di qualità dei test (core, sync,
+db, ui), per avere una copertura "vera": test che falliscono davvero quando il codice
+sbaglia, non solo righe eseguite. Workflow Research, Plan, Implement; gli artefatti di
+piano sono in `specs/002-god-module-split-phase2/`.
+
+### Azioni Eseguite
+**Audit dei test.** 5 worker hanno cercato mutanti sopravvissuti (modifiche al codice
+che nessun test nota). Sono stati confermati 50 mutanti eseguendoli uno per uno; tutti
+sono stati uccisi dai test nuovi, verificato rieseguendo i mutanti. Due finding dei
+worker sono stati smentiti dall'esecuzione e scartati.
+
+**Difetti di produzione corretti**, ognuno con un test visto rosso prima del fix.
+- Un comando con errore di sintassi o con `exit` chiudeva il terminale prima di
+  mostrare l'errore. Ora gira in una bash annidata.
+- L'import si interrompeva a metà con sezioni che differiscono solo per le maiuscole
+  ("git" e "Git").
+- Il token GitHub veniva creato per un istante con i permessi dell'umask, prima del
+  `chmod 600`. Ora il file nasce con permessi 600. Il `security-reviewer` non ha
+  trovato problemi sfruttabili residui.
+- L'app non partiva con un `settings.json` non valido (lista JSON, byte non UTF-8,
+  path illeggibile), nonostante la docstring promettesse i valori di default. Stesso
+  difetto nella lettura del token.
+- Nella ricerca `_` e `%` facevano da jolly: cercare `my_var` trovava `myXvar`.
+- `cancel()` della ricerca non annullava una ricerca digitata nei 150 ms precedenti
+  (doppio debounce, GTK e nostro). Ora c'è un solo debounce da 250 ms e i risultati
+  arrivano anche più rapidi.
+
+**Difetto dei test.** Le eccezioni dentro gli handler GTK venivano stampate e ignorate
+da PyGObject, quindi un clic che andava in crash dava comunque un test verde. Ora una
+fixture autouse fa fallire il test. Attivarla ha fatto emergere timer lasciati da test
+precedenti, che scattavano a database chiuso: ora vengono annullati nel teardown.
+
+**Refactor.**
+- `SectionRow` ricava l'id dalla sezione (eliminato uno stato incoerente).
+- `describe_sync_status` riceve `SyncSettings` e `SyncResult` invece di una tupla
+  posizionale.
+- `RunConfirmDialog` e `SyncSetupDialog` sono spezzati in funzioni sotto le 30 righe.
+- `entry_payload` (puro) ed `EditorRequest` (da 7 a 4 parametri) sono in
+  `command_quiver/ui/editor_request.py`; `entry_editor.py` scende sotto le 300 righe.
+
+**Misure.**
+
+| Voce | Prima | Dopo |
+|------|-------|------|
+| Test | 862 | 962 |
+| Copertura righe | 99,9% | 99,97% |
+| Copertura rami | ~97,7% | 98,09% |
+| Copertura combinata | - | 99,7% |
+| Floor CI (`--cov-fail-under`, misura la combinata) | 95 | 98 |
+
+**Gate.** `code-reviewer`: APPROVE, con rilievi applicati (file oltre 300 righe,
+keyword argument, commento ripristinato). `type-design-analyzer`: APPROVE su
+`EditorRequest`. `/analyze`: 1 CRITICAL (funzione a 33 righe), corretto, poi artefatti
+allineati. Verifica runtime: avvio reale dell'app con HOME e D-Bus isolati, migrazioni,
+finestra presentata e chiusura ordinata, senza errori nel log.
+
+Il lavoro è in 27 commit su `main`, da `3a6aaf5` a `16bc4ad`. Nessun push.
+
+### Non Fatto, con Motivo
+- Gate automatico dei limiti dimensionali (T1): non richiesto, resta una proposta.
+- Rimozione di `confirm_and_run`: rifiutata, tre test la usano direttamente.
+- `SidebarPanel` non scomposta: è la composition root, 195 righe di codice.
+- 5 rami irraggiungibili segnalati e non rimossi: `db/schema.py:212`,
+  `ui/entry_list.py:276` e `281`, `ui/section_panel.py:191`, `ui/sync_dialog.py:222`,
+  `ui/library_controller.py:93`.
+- 3 rami a basso valore lasciati senza test: `ui/entry_list.py:261`,
+  `ui/section_panel.py:181`, `ui/sidebar.py:270`.
+
+### Aperti / Decisioni per l'Utente
+- B13: la lista si tronca a 500 voci senza avviso, ancora aperto.
+- La conferma di esecuzione mostra solo i primi 600 caratteri del comando ma esegue il
+  comando intero: una voce importata può nascondere la coda. Da decidere tra scroll con
+  il testo completo o un avviso di troncamento.
+- Sync: se la versione locale è più vecchia di una tombstone e la remota è più nuova,
+  la voce viene scartata invece di far vincere la remota (`sync_merge.py:81`). Scenario
+  raro, da decidere.
+- L'ordine delle sezioni non si propaga fra dispositivi (viene esportato ma non
+  applicato al pull). È voluto?
+- Il log "DB legacy rilevato con schema v1" compare anche su un database appena
+  creato. Fuorviante, preesistente.
+
+### File Modificati
+| Area | Tipo | Descrizione |
+|------|------|-------------|
+| `command_quiver/core/` | Modifica | Esecuzione comandi in bash annidata, token creato con permessi 600, lettura robusta di `settings.json`, `describe_sync_status` con parametri tipizzati |
+| `command_quiver/db/` | Modifica | Escape di `_` e `%` nella ricerca, import con sezioni che differiscono per maiuscole |
+| `command_quiver/ui/` | Crea/Modifica | `editor_request.py`, debounce unico di ricerca, `SectionRow`, dialog spezzati |
+| `tests/` | Crea/Modifica | Da 862 a 962 test, fixture autouse sulle eccezioni GTK, teardown dei timer |
+| `.github/workflows/ci.yml` | Modifica | Floor di copertura da 95 a 98 |
+| `specs/002-god-module-split-phase2/` | Crea | Piano, specifica e task del workflow RPI |
+
+### Note per il Cliente
+Il codice è più ordinato e i controlli automatici sono più severi: da 862 a 962
+verifiche. Abbiamo anche controllato che questi controlli scoprano davvero gli errori,
+introducendo di proposito dei difetti e verificando che venissero notati.
+
+Sono stati corretti sei difetti. La ricerca con i simboli "_" e "%" restituiva
+risultati sbagliati. L'app non si avviava se il file delle impostazioni era rovinato.
+Per un istante molto breve il codice di accesso alla sincronizzazione poteva essere
+letto da altri utenti dello stesso computer. Un comando con un errore chiudeva la
+finestra prima di mostrarlo, e l'importazione si fermava a metà con sezioni dal nome
+quasi uguale. Infine una ricerca scritta un attimo prima di cambiare lingua restava
+in sospeso e partiva dopo; ora no, e i risultati compaiono anche un po' prima.
+
+Restano da decidere alcuni comportamenti, elencati sopra.
+
+### Riepilogo
+- Complessità: Alta
+- Stato: Completato su `main` (commit `3a6aaf5`..`16bc4ad`, nessun push); aperti B13 e
+  le quattro decisioni elencate, più i rami irraggiungibili segnalati
