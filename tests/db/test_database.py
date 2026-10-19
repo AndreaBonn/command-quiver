@@ -815,3 +815,46 @@ def test_connect_without_recreation_propagates_open_error(db_path: Path) -> None
 
     with pytest.raises(sqlite3.DatabaseError, match="not a database"):
         database._connect(_allow_recreate=False)
+
+
+def test_initialize_locked_database_raises_and_keeps_the_file(
+    db_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Un lock non è corruzione: niente ricreazione, la libreria dell'utente resta al suo posto."""
+    database = Database(db_path=db_path)
+    database.initialize(language="it")
+    database.close()
+    original = db_path.read_bytes()
+
+    def locked(*args: object, **kwargs: object) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr("command_quiver.db.database.build_schema", locked)
+    reopened = Database(db_path=db_path)
+
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        reopened.initialize(language="it")
+
+    reopened.close()
+    assert list(db_path.parent.glob("*.db.bak.*")) == []
+    assert db_path.read_bytes() == original
+
+
+def test_initialize_corrupt_database_moves_its_wal_with_the_backup(db_path: Path) -> None:
+    """Le transazioni non ancora consolidate seguono il file corrotto nel backup."""
+    db_path.write_bytes(b"not a sqlite database\x00")
+    wal = db_path.with_name(db_path.name + "-wal")
+    wal.write_bytes(b"pending transactions")
+    database = Database(db_path=db_path)
+
+    database.initialize(language="it")
+
+    try:
+        backups = [
+            p for p in db_path.parent.glob("*.db.bak.*") if not p.name.endswith(("-wal", "-shm"))
+        ]
+        assert len(backups) == 1
+        moved_wal = backups[0].with_name(backups[0].name + "-wal")
+        assert moved_wal.read_bytes() == b"pending transactions"
+    finally:
+        database.close()

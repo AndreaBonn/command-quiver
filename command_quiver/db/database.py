@@ -34,8 +34,8 @@ class Database:
         try:
             self._connection = self.create_connection()
             logger.info("Connessione database aperta: %s", self._db_path)
-        except sqlite3.Error:
-            if not _allow_recreate:
+        except sqlite3.Error as err:
+            if not _allow_recreate or _is_lock_error(err):
                 raise
             logger.exception("Errore apertura database, tentativo di ricreare")
             self._recreate()
@@ -68,7 +68,10 @@ class Database:
             build_schema(self.connection, self._seed_language)
             auto_backup(self.connection, self._db_path)
             logger.info("Schema database inizializzato")
-        except sqlite3.Error:
+        except sqlite3.Error as err:
+            if _is_lock_error(err):
+                # Un lock non è corruzione: ricreare nasconderebbe la libreria dell'utente
+                raise
             logger.exception("Errore inizializzazione schema, tentativo di ricreare")
             self._recreate()
 
@@ -79,7 +82,7 @@ class Database:
         if self._db_path.exists():
             timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
             backup = self._db_path.with_suffix(f".db.bak.{timestamp}")
-            self._db_path.rename(backup)
+            _move_with_journal(source=self._db_path, target=backup)
             logger.info("Backup database corrotto salvato in: %s", backup)
         try:
             self._connect(_allow_recreate=False)
@@ -98,3 +101,18 @@ class Database:
             finally:
                 self._connection = None
                 logger.info("Connessione database chiusa")
+
+
+def _is_lock_error(err: sqlite3.Error) -> bool:
+    """Vero per un database occupato da un'altra connessione, che non va ricreato."""
+    message = str(err).lower()
+    return isinstance(err, sqlite3.OperationalError) and ("locked" in message or "busy" in message)
+
+
+def _move_with_journal(source: Path, target: Path) -> None:
+    """Sposta il database insieme ai file -wal e -shm, che contengono transazioni recenti."""
+    source.rename(target)
+    for suffix in ("-wal", "-shm"):
+        journal = source.with_name(source.name + suffix)
+        if journal.exists():
+            journal.rename(target.with_name(target.name + suffix))
