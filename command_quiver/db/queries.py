@@ -143,14 +143,7 @@ class SectionRepository:
         )
         self._conn.commit()
         logger.info("Sezione creata: %s (id=%d)", name, cursor.lastrowid)
-        return Section(
-            id=cursor.lastrowid,
-            name=name,
-            icon=icon,
-            position=next_pos,
-            uuid=new_uuid,
-            updated_at=now,
-        )
+        return self.get_by_id(cursor.lastrowid)
 
     def create_with_uuid(
         self,
@@ -169,14 +162,7 @@ class SectionRepository:
         )
         self._conn.commit()
         logger.info("Sezione creata via sync: %s (uuid=%s)", name, section_uuid)
-        return Section(
-            id=cursor.lastrowid,
-            name=name,
-            icon=icon,
-            position=next_pos,
-            uuid=section_uuid,
-            updated_at=now,
-        )
+        return self.get_by_id(cursor.lastrowid)
 
     def rename(self, section_id: int, new_name: str) -> bool:
         """Rinomina una sezione. Restituisce True se modificata.

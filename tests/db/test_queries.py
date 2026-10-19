@@ -1194,3 +1194,18 @@ def test_delete_entry_without_failure_removes_entry_and_records_tombstone(
 
     assert entries.get_by_id(created.id) is None
     assert [t["uuid"] for t in TombstoneRepository(db.connection).get_all()] == [created.uuid]
+
+
+# --- Valori restituiti dalle creazioni ---
+
+
+def test_create_section_returns_stored_created_at(sections: SectionRepository) -> None:
+    created = sections.create(name="Lavoro")
+
+    assert created.created_at == sections.get_by_id(created.id).created_at != ""
+
+
+def test_create_with_uuid_returns_stored_created_at(sections: SectionRepository) -> None:
+    created = sections.create_with_uuid(name="Remota", section_uuid="r-1")
+
+    assert created.created_at == sections.get_by_uuid("r-1").created_at != ""
