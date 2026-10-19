@@ -262,3 +262,39 @@ class TestFinalSync:
 
         assert h.runtime.cancelled == [timer_id]
         assert not h.coordinator.has_pending_request
+
+
+class TestFinalSyncOutcome:
+    """Il thread di chiusura riporta l'esito nel log del progetto, non nel vuoto."""
+
+    def test_final_sync_exception_is_logged_not_raised(self, caplog) -> None:
+        h = Harness().enabled()
+        h.engine.outcome = RuntimeError("disco pieno")
+
+        with caplog.at_level(logging.ERROR, logger="command_quiver.core.sync_coordinator"):
+            h.coordinator.final_sync(timeout=5)
+            h.runtime.complete_syncs()
+
+        errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+        assert len(errors) == 1
+        assert errors[0].exc_info is not None
+
+    def test_final_sync_failed_result_is_logged_as_warning(self, caplog) -> None:
+        h = Harness().enabled()
+        h.engine.outcome = SyncResult(success=False, message="Token non valido")
+
+        with caplog.at_level(logging.WARNING, logger="command_quiver.core.sync_coordinator"):
+            h.coordinator.final_sync(timeout=5)
+            h.runtime.complete_syncs()
+
+        assert "Token non valido" in caplog.text
+
+    def test_final_sync_success_logs_no_warning(self, caplog) -> None:
+        """Positivo appaiato: un sync finale riuscito non produce avvisi."""
+        h = Harness().enabled()
+
+        with caplog.at_level(logging.WARNING, logger="command_quiver.core.sync_coordinator"):
+            h.coordinator.final_sync(timeout=5)
+            h.runtime.complete_syncs()
+
+        assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []

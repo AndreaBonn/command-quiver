@@ -130,7 +130,8 @@ class SyncCoordinator:
         # Con una sync in volo un secondo push userebbe lo stesso SHA (409)
         if self._engine is None or self._running:
             return True
-        thread = self._runtime.spawn(self._engine.sync)
+        engine = self._engine
+        thread = self._runtime.spawn(lambda: _run_final_sync(engine))
         thread.join(timeout=timeout)
         if thread.is_alive():
             logger.warning("Sync finale timeout, chiusura senza attendere")
@@ -157,3 +158,19 @@ class SyncCoordinator:
         if self._on_finished is not None:
             self._on_finished(result)
         return False  # Rimuovi da idle
+
+
+def _run_final_sync(engine: SyncEngineLike) -> None:
+    """Corpo del thread di chiusura, che non passa da ``_finish``.
+
+    Esito ed eccezioni vanno loggati qui: altrimenti un'eccezione finisce
+    nell'excepthook di threading, fuori dal log del progetto, e un sync
+    fallito risulta riuscito.
+    """
+    try:
+        result = engine.sync()
+    except Exception:
+        logger.exception("Eccezione nel sync finale")
+        return
+    if not result.success:
+        logger.warning("Sync finale fallito: %s", result.message)
