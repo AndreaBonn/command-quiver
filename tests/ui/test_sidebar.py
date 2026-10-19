@@ -351,10 +351,7 @@ class TestSidebarPanel:
         # Sposta la prima voce in giù
         sidebar._library.move(entry_id=e1.id, direction=1)
 
-        # Dopo lo swap, le posizioni devono essere scambiate
-        updated_e1 = repo.get_by_id(e1.id)
-        updated_e2 = repo.get_by_id(e2.id)
-        assert updated_e1.personal_pos != updated_e2.personal_pos
+        assert [entry.id for entry in sidebar._entry_list.entries] == [e2.id, e1.id]
 
     def test_entry_move_noop_at_boundary(
         self,
@@ -362,7 +359,8 @@ class TestSidebarPanel:
         db_for_ui: Database,
     ) -> None:
         repo = EntryRepository(db_for_ui.connection)
-        e1 = repo.create(EntryCreate(name="Only", content="x", section_id=1, type="shell"))
+        e1 = repo.create(EntryCreate(name="First", content="x", section_id=1, type="shell"))
+        e2 = repo.create(EntryCreate(name="Second", content="y", section_id=1, type="shell"))
 
         sidebar = self._create_sidebar(db_for_ui)
         sidebar._section_panel.current_section_id = 1
@@ -371,18 +369,22 @@ class TestSidebarPanel:
         sidebar._refresh_entries()
 
         # Sposta verso l'alto -> fuori range -> noop
-        original_pos = repo.get_by_id(e1.id).personal_pos
         sidebar._library.move(entry_id=e1.id, direction=-1)
-        assert repo.get_by_id(e1.id).personal_pos == original_pos
+        assert [entry.id for entry in sidebar._entry_list.entries] == [e1.id, e2.id]
 
     def test_entry_move_nonexistent_entry_noop(
         self,
         gtk_init,
         db_for_ui: Database,
     ) -> None:
-        sidebar = self._create_sidebar(db_for_ui)
-        # Non deve sollevare eccezioni
+        repo = EntryRepository(db_for_ui.connection)
+        first = repo.create(EntryCreate(name="First", content="x", section_id=1))
+        second = repo.create(EntryCreate(name="Second", content="y", section_id=1))
+        sidebar = self._create_sidebar(db_for_ui, Settings(sort_order="personal"))
+
         sidebar._library.move(entry_id=9999, direction=1)
+
+        assert [entry.id for entry in sidebar._entry_list.entries] == [first.id, second.id]
 
     def test_on_entry_click_opens_editor(
         self,

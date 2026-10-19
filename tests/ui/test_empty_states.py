@@ -1,6 +1,6 @@
 """Stati vuoti della lista: cosa legge l'utente e quali azioni gli vengono offerte."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -41,6 +41,12 @@ def _button_labels(widget) -> list[str]:
 
 @requires_display
 class TestSearchEmpty:
+    def test_query_takes_priority_over_empty_library(self, gtk_init) -> None:
+        widget, _actions = _build(library_empty=True, query="zzz")
+
+        assert "Nessun risultato per «zzz»" in _texts(widget)
+        assert _button_labels(widget) == ["Cancella ricerca"]
+
     def test_search_in_all_sections_echoes_query_and_offers_only_clear(self, gtk_init) -> None:
         widget, actions = _build(library_empty=False, query="zzz", section_name=None)
 
@@ -57,3 +63,19 @@ class TestSearchEmpty:
         assert _button_labels(widget) == ["Cerca in tutte le sezioni", "Cancella ricerca"]
         button_labelled(widget, "Cerca in tutte le sezioni").emit("clicked")
         actions["on_search_all"].assert_called_once_with()
+
+
+@requires_display
+class TestWelcomeActions:
+    @pytest.mark.parametrize(
+        ("label", "callback"),
+        [("Crea la prima voce", "on_create"), ("Prova con 6 esempi", "on_add_samples")],
+    )
+    def test_welcome_button_calls_matching_action(self, gtk_init, label, callback) -> None:
+        widget, actions = _build(library_empty=True)
+
+        button_labelled(widget, label).emit("clicked")
+
+        assert {name: action.call_args_list for name, action in actions.items()} == {
+            name: [call()] if name == callback else [] for name in actions
+        }

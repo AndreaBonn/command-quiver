@@ -6,10 +6,10 @@ import pytest
 
 from command_quiver.core.i18n import init as i18n_init
 from command_quiver.core.settings import Settings
-from command_quiver.db.database import Database
 from command_quiver.db.entry_repository import EntryRepository
 from command_quiver.db.models import EntryCreate
 from tests.conftest import button_labelled, key_press, requires_display, run_loop_for, wait_until
+from tests.ui.conftest import add_shell_entry, delete_from_editor, shown_names, toplevels
 
 
 @pytest.fixture(autouse=True)
@@ -17,82 +17,17 @@ def _italian() -> None:
     i18n_init("it")
 
 
-def _toplevels() -> set:
-    from gi.repository import Gtk
-
-    return set(Gtk.Window.list_toplevels())
-
-
-@pytest.fixture
-def make_sidebar(gtk_init, db_for_ui: Database, isolated_config):
-    """Costruisce la finestra con settings su tmp; chiude ciò che il test ha aperto."""
-    from command_quiver.ui.sidebar import SidebarCallbacks, SidebarPanel
-
-    before = _toplevels()
-
-    def _make(settings: Settings | None = None, **callbacks) -> SidebarPanel:
-        return SidebarPanel(
-            db=db_for_ui,
-            settings=settings or Settings(),
-            callbacks=SidebarCallbacks(**callbacks),
-        )
-
-    yield _make
-    for window in _toplevels() - before:
-        window.destroy()
-
-
-def _add(db: Database, name: str) -> int:
-    return (
-        EntryRepository(db.connection)
-        .create(EntryCreate(name=name, content=f"echo {name}", section_id=1, type="shell"))
-        .id
-    )
-
-
-def _delete_from_editor(sidebar, name: str) -> None:
-    """Come l'utente: matita sulla riga, poi "Elimina" nell'editor."""
-    from gi.repository import Gtk
-
-    from command_quiver.ui.entry_editor import EntryEditorDialog
-    from command_quiver.ui.entry_list import EntryRow
-    from tests.conftest import descendants
-
-    row = next(
-        w
-        for w in descendants(sidebar._entry_list)
-        if isinstance(w, EntryRow) and w.entry.name == name
-    )
-    edit = next(
-        b
-        for b in descendants(row)
-        if isinstance(b, Gtk.Button) and b.get_icon_name() == "document-edit-symbolic"
-    )
-    before = set(Gtk.Window.list_toplevels())
-    edit.emit("clicked")
-    editor = next(
-        w
-        for w in Gtk.Window.list_toplevels()
-        if isinstance(w, EntryEditorDialog) and w not in before
-    )
-    button_labelled(editor, "Elimina").emit("clicked")
-
-
-def _shown(sidebar) -> list[str]:
-    return [e.name for e in sidebar._entry_list.entries]
-
-
 @requires_display
 class TestSearch:
     def test_typing_filters_the_list_after_the_debounce(self, make_sidebar, db_for_ui) -> None:
-        _add(db_for_ui, "Alpha")
-        _add(db_for_ui, "Beta")
+        add_shell_entry(db_for_ui, "Alpha")
+        add_shell_entry(db_for_ui, "Beta")
         sidebar = make_sidebar()
-        assert sorted(_shown(sidebar)) == ["Alpha", "Beta"]
+        assert sorted(shown_names(sidebar)) == ["Alpha", "Beta"]
 
         sidebar._search_entry.set_text("alp")
 
-        assert wait_until(lambda: _shown(sidebar) == ["Alpha"])
+        assert wait_until(lambda: shown_names(sidebar) == ["Alpha"])
 
     def test_escape_clears_a_non_empty_search_and_is_consumed(self, make_sidebar) -> None:
         from gi.repository import Gdk
@@ -115,8 +50,8 @@ class TestSearch:
     ) -> None:
         from command_quiver.ui.search_bar import _SEARCH_DEBOUNCE_MS
 
-        _add(db_for_ui, "Alpha")
-        _add(db_for_ui, "Beta")
+        add_shell_entry(db_for_ui, "Alpha")
+        add_shell_entry(db_for_ui, "Beta")
         sidebar = make_sidebar()
         sidebar._search_entry.set_text("alp")
         run_loop_for(sidebar._search_entry.get_search_delay() + 60)
@@ -124,14 +59,14 @@ class TestSearch:
         sidebar.cancel_pending_timers()
 
         run_loop_for(_SEARCH_DEBOUNCE_MS + 200)
-        assert sorted(_shown(sidebar)) == ["Alpha", "Beta"]
+        assert sorted(shown_names(sidebar)) == ["Alpha", "Beta"]
 
     def test_cancel_pending_timers_makes_a_pending_delete_final(
         self, make_sidebar, db_for_ui
     ) -> None:
-        entry_id = _add(db_for_ui, "Alpha")
+        entry_id = add_shell_entry(db_for_ui, "Alpha")
         sidebar = make_sidebar()
-        _delete_from_editor(sidebar, "Alpha")
+        delete_from_editor(sidebar, "Alpha")
         assert EntryRepository(db_for_ui.connection).get_by_id(entry_id) is not None
 
         sidebar.cancel_pending_timers()
@@ -169,10 +104,10 @@ class TestAppCallbacks:
         toggled = MagicMock()
         sidebar = make_sidebar(on_sync_toggled=toggled)
         assert sidebar._status_bar.text == "Salvato solo su questo computer"
-        before = _toplevels()
+        before = toplevels()
 
         sidebar.activate_action("win.sync", None)
-        dialogs = [w for w in _toplevels() - before if isinstance(w, SyncSetupDialog)]
+        dialogs = [w for w in toplevels() - before if isinstance(w, SyncSetupDialog)]
         assert len(dialogs) == 1
         dialogs[0]._repo_entry.set_text("mrossi/vault")
         dialogs[0]._token_entry.set_text("ghp_x")
@@ -180,3 +115,71 @@ class TestAppCallbacks:
 
         toggled.assert_called_once_with()
         assert sidebar._status_bar.text == "Non ancora sincronizzato"
+
+    def test_sync_now_button_calls_the_app(self, make_sidebar) -> None:
+        from command_quiver.core.settings import SyncSettings
+        from command_quiver.ui.sync_dialog import SyncSetupDialog
+
+        requested = MagicMock()
+        sidebar = make_sidebar(
+            settings=Settings(sync=SyncSettings(enabled=True)), on_sync_now=requested
+        )
+        before = toplevels()
+        sidebar.activate_action("win.sync", None)
+        dialog = next(w for w in toplevels() - before if isinstance(w, SyncSetupDialog))
+        button = button_labelled(dialog, "Sincronizza ora")
+        assert button.get_visible()
+
+        button.emit("clicked")
+
+        requested.assert_called_once_with()
+
+
+@requires_display
+class TestEntrySignals:
+    def test_search_activate_copies_first_filtered_entry(
+        self, make_sidebar, db_for_ui, monkeypatch
+    ) -> None:
+        copied: list[str] = []
+        monkeypatch.setattr(
+            "command_quiver.ui.entry_list.copy_to_clipboard",
+            lambda text: copied.append(text) or True,
+        )
+        add_shell_entry(db_for_ui, "Hidden")
+        add_shell_entry(db_for_ui, "Beta")
+        add_shell_entry(db_for_ui, "Bravo")
+        sidebar = make_sidebar(settings=Settings(sort_order="alpha_asc"))
+        sidebar._search_entry.set_text("b")
+        assert wait_until(lambda: shown_names(sidebar) == ["Beta", "Bravo"])
+
+        sidebar._search_entry.emit("activate")
+
+        assert copied == ["echo Beta"]
+
+    def test_alt_down_moves_focused_entry_one_place(self, make_sidebar, db_for_ui) -> None:
+        from gi.repository import Gdk
+
+        for name in ("First", "Second", "Third"):
+            add_shell_entry(db_for_ui, name)
+        sidebar = make_sidebar(settings=Settings(sort_order="personal"))
+        sidebar.present()
+        listing = sidebar._entry_list._list_box
+        row = listing.get_row_at_index(1)
+        row.grab_focus()
+        assert wait_until(lambda: listing.get_focus_child() == row)
+
+        key_press(listing, Gdk.KEY_Down, Gdk.ModifierType.ALT_MASK)
+
+        assert shown_names(sidebar) == ["First", "Third", "Second"]
+
+    def test_copy_row_increments_only_its_usage(self, make_sidebar, db_for_ui, monkeypatch) -> None:
+        monkeypatch.setattr("command_quiver.ui.entry_list.copy_to_clipboard", lambda text: True)
+        first = add_shell_entry(db_for_ui, "Alpha")
+        second = add_shell_entry(db_for_ui, "Beta")
+        sidebar = make_sidebar(settings=Settings(sort_order="alpha_asc"))
+        listing = sidebar._entry_list._list_box
+
+        listing.emit("row-activated", listing.get_row_at_index(1))
+
+        repo = EntryRepository(db_for_ui.connection)
+        assert (repo.get_by_id(first).use_count, repo.get_by_id(second).use_count) == (0, 1)

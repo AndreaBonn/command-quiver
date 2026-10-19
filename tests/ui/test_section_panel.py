@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from gi.repository import Gtk
 
 from command_quiver.core.i18n import init as i18n_init
 from command_quiver.db.database import Database
@@ -16,6 +15,10 @@ from tests.conftest import button_labelled, descendants, requires_display
 @requires_display
 class TestSectionPanelWidget:
     """Test pannello sezioni con database reale."""
+
+    @pytest.fixture(autouse=True)
+    def _italian(self) -> None:
+        i18n_init("it")
 
     def _create_panel(self, db: Database, on_changed=None):
         from command_quiver.ui.section_panel import SectionPanelWidget
@@ -59,7 +62,7 @@ class TestSectionPanelWidget:
         panel = self._create_panel(db_for_ui)
         # "Shell Commands" è una sezione default
         result = panel._on_section_created("Shell Commands")
-        assert result is not None  # Messaggio errore
+        assert result == 'La sezione "Shell Commands" esiste già'
 
     def test_on_section_renamed_success(self, gtk_init, db_for_ui: Database) -> None:
         panel = self._create_panel(db_for_ui)
@@ -75,7 +78,7 @@ class TestSectionPanelWidget:
         panel = self._create_panel(db_for_ui)
         # Rinomina Shell Commands → AI Prompts (già esiste)
         result = panel._on_section_renamed(section_id=1, new_name="AI Prompts")
-        assert result is not None
+        assert result == 'La sezione "AI Prompts" esiste già'
 
     def test_on_section_deleted_resets_current(self, gtk_init, db_for_ui: Database) -> None:
         mock_changed = MagicMock()
@@ -110,9 +113,27 @@ class TestSectionPanelWidget:
         panel._current_section_id = 1
         panel.refresh()
 
-        # Verifica che una riga sia selezionata
         selected = panel._section_list.get_selected_row()
-        assert selected is not None
+        assert selected.get_child().section_id == 1
+
+    def test_refresh_shows_distinct_section_counts_and_total(
+        self, gtk_init, db_for_ui: Database
+    ) -> None:
+        from command_quiver.db.models import EntryCreate
+
+        repo = EntryRepository(db_for_ui.connection)
+        for name, section_id in (("One", 1), ("Two", 1), ("Three", 2)):
+            repo.create(EntryCreate(name=name, content=name, section_id=section_id))
+        panel = self._create_panel(db_for_ui)
+
+        panel.refresh()
+
+        counts = {
+            row.section_id: row.count_label.get_label()
+            for row in descendants(panel._section_list)
+            if isinstance(row, SectionRow)
+        }
+        assert (counts[1], counts[2], counts[None]) == ("2", "1", "3")
 
 
 def _toplevels_of(kind) -> list:
@@ -166,6 +187,8 @@ class TestSectionPanelDialogs:
     def test_new_section_is_created_listed_and_dialog_closes(
         self, panel, db_for_ui: Database
     ) -> None:
+        from gi.repository import Gtk
+
         from command_quiver.ui.section_manager import SectionNameDialog
 
         dialog = self._open_dialog(panel, SectionNameDialog)
@@ -204,6 +227,8 @@ class TestSectionPanelDialogs:
         return rows[0].menu_button.get_popover()
 
     def test_rename_from_menu_saves_new_name(self, panel, db_for_ui: Database) -> None:
+        from gi.repository import Gtk
+
         from command_quiver.ui.section_manager import SectionNameDialog
 
         old = self._names(db_for_ui)[0]
@@ -217,6 +242,11 @@ class TestSectionPanelDialogs:
 
         assert "Rinominata" in self._names(db_for_ui)
         assert old not in self._names(db_for_ui)
+        labels = [
+            w.get_label() for w in descendants(panel._section_list) if isinstance(w, Gtk.Label)
+        ]
+        assert "Rinominata" in labels
+        assert old not in labels
 
     def test_rename_to_existing_name_is_refused(self, panel, db_for_ui: Database) -> None:
         from command_quiver.ui.section_manager import SectionNameDialog
@@ -237,6 +267,8 @@ class TestSectionPanelDialogs:
     def test_delete_from_menu_only_when_confirmed(
         self, panel, db_for_ui: Database, choice: int, deleted: bool
     ) -> None:
+        from gi.repository import Gtk
+
         from command_quiver.ui import section_manager
 
         _AutoAnswer.choice = choice
@@ -244,10 +276,24 @@ class TestSectionPanelDialogs:
             s for s in SectionRepository(db_for_ui.connection).get_all() if not s.is_default
         ]
         target = removable[0].name
+        before_names = self._names(db_for_ui)
         with patch.object(section_manager.Gtk, "AlertDialog", _AutoAnswer):
             button_labelled(self._menu_of(panel, target), "Elimina").emit("clicked")
 
         assert (target not in self._names(db_for_ui)) is deleted
+        expected = ["Tutti", *[name for name in before_names if not (deleted and name == target)]]
+        labels = [
+            next(
+                w.get_label()
+                for w in descendants(row)
+                if isinstance(w, Gtk.Label)
+                and w.get_parent() == row
+                and not w.has_css_class("section-count")
+            )
+            for row in descendants(panel._section_list)
+            if isinstance(row, SectionRow)
+        ]
+        assert labels == expected
 
 
 class _AutoAnswer:

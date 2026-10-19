@@ -136,16 +136,18 @@ class _FakeAlert:
     def __init__(self, message: str, detail: str) -> None:
         self.message = message
         self.buttons: list[str] = []
+        self.cancel_index: int | None = None
+        self.default_index: int | None = None
         type(self).last = self
 
     def set_buttons(self, buttons: list[str]) -> None:
         self.buttons = buttons
 
-    def set_cancel_button(self, _index: int) -> None:
-        pass
+    def set_cancel_button(self, index: int) -> None:
+        self.cancel_index = index
 
-    def set_default_button(self, _index: int) -> None:
-        pass
+    def set_default_button(self, index: int) -> None:
+        self.default_index = index
 
     def choose(self, _parent, _cancellable, callback) -> None:
         callback(self, None)
@@ -160,6 +162,16 @@ class _FakeAlert:
 
 @requires_display
 class TestDeleteSectionDialog:
+    def test_delete_confirmation_defaults_to_cancel(self, gtk_init) -> None:
+        self._ask(choice=0)
+
+        alert = _FakeAlert.last
+        assert (alert.buttons, alert.cancel_index, alert.default_index) == (
+            ["Annulla", "Elimina"],
+            0,
+            0,
+        )
+
     def _ask(self, choice: int | None) -> MagicMock:
         from unittest.mock import patch
 
