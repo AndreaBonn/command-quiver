@@ -9,7 +9,7 @@ from command_quiver.core import i18n
 from command_quiver.core import settings as settings_module
 from command_quiver.core.settings import Settings, load_settings
 from command_quiver.db.models import Entry
-from tests.conftest import requires_display
+from tests.conftest import requires_display, wait_until
 
 _EXECUTE = "command_quiver.ui.entry_list.execute_in_terminal"
 
@@ -296,6 +296,25 @@ class TestRunConfirmDialog:
         assert handled is True
         assert not dialog.get_visible()
         on_confirm.assert_not_called()
+
+    def test_dialog_enter_runs_through_the_default_button(self, gtk_init) -> None:
+        """Docstring: "Invio esegue". Invio attiva il pulsante di default, cioè Esegui."""
+        dialog, on_confirm = self._dialog()
+        dialog.present()
+        # Caso reale: l'utente ha appena spuntato "non chiedere più", il focus è lì
+        _checkbox(dialog).set_active(True)
+        _checkbox(dialog).grab_focus()
+
+        # L'azione che GTK lega a Invio; il clic arriva dopo l'animazione del pulsante
+        dialog.activate_action("default.activate", None)
+
+        assert wait_until(lambda: on_confirm.call_count == 1)
+        assert on_confirm.call_args.args[1] is True
+
+    def test_dialog_focus_starts_on_run_not_on_the_selectable_command(self, gtk_init) -> None:
+        dialog, _ = self._dialog()
+
+        assert dialog.get_focus() is _button(dialog, i18n.t("run.run"))
 
     def test_dialog_other_key_is_not_handled_and_keeps_dialog_open(self, gtk_init) -> None:
         from gi.repository import Gdk
