@@ -115,6 +115,8 @@ erDiagram
     datetime created_at
     datetime updated_at
     text uuid UK
+    int use_count
+    datetime last_used_at
   }
 
   SYNC_TOMBSTONES {
@@ -155,7 +157,7 @@ stateDiagram-v2
 
 ### Ciclo di vita dell'applicazione
 
-La finestra principale e l'applicazione: chiudendola (pulsante di chiusura o `Esc`) viene eseguita una sincronizzazione finale, salvato lo stato e l'app termina via `do_shutdown`.
+La finestra principale è l'applicazione: chiudendola (pulsante di chiusura o `Ctrl+Q`) viene eseguita una sincronizzazione finale, salvato lo stato e l'app termina via `do_shutdown`.
 
 ```mermaid
 stateDiagram-v2
@@ -163,7 +165,7 @@ stateDiagram-v2
 
   Avvio --> Attiva : do_startup + do_activate
   Attiva --> Attiva : Cambio lingua ricostruisce la sidebar
-  Attiva --> Chiusura : Finestra chiusa (X o Esc)
+  Attiva --> Chiusura : Finestra chiusa (X o Ctrl+Q)
   Chiusura --> [*] : Sync finale + salvataggio + db.close
 
   note right of Chiusura
@@ -174,43 +176,47 @@ stateDiagram-v2
 
 ## Gerarchia componenti UI
 
-Albero widget GTK4.
+Albero dei widget GTK4 della finestra principale. I dialog sono `Gtk.Window` separate, aperte dai widget che puntano a loro.
 
 ```mermaid
 %%{init: {'theme': 'default'}}%%
 graph TD
   app["CommandQuiverApp<br/>Gtk.Application"]
   sidebar["SidebarPanel<br/>Gtk.Window"]
-  search["Campo ricerca"]
+  header["HeaderBar"]
+  new_entry["Pulsante Nuova<br/>&#8594; EntryEditorDialog"]
+  menu["Menu principale &#9776;<br/>lingua, sincronizzazione, import/export,<br/>scorciatoie, informazioni, esci"]
+  search_bar["SearchBar"]
+  search["SearchEntry<br/>nomi, contenuti, tag"]
+  sort_dd["Sort DropDown<br/>6 opzioni"]
   paned["Gtk.Paned"]
   section_panel["SectionPanelWidget"]
-  section_list["Lista sezioni"]
-  new_section["Btn nuova sezione<br/>&#8594; SectionCreateDialog"]
-  right_panel["Pannello destro"]
+  section_row["SectionRow x N<br/>icona | nome | conteggio | menu"]
+  new_section["Pulsante + Sezione<br/>&#8594; SectionNameDialog"]
+  toast["ToastOverlay<br/>copiato, eliminato + Annulla"]
   entry_list["EntryListWidget"]
-  entry_row["EntryRow x N<br/>nome | badge | copia | modifica | esegui"]
-  sort_dd["Ordinamento DropDown<br/>5 opzioni"]
-  bottom_bar["Barra inferiore"]
-  new_entry["Btn nuova voce<br/>&#8594; EntryEditorDialog"]
-  lang_dd["DropDown lingua<br/>IT / EN"]
-  sync_btn["Btn sync<br/>&#8594; SyncSetupDialog"]
-  sync_label["Stato sincronizzazione"]
+  entry_row["EntryRow x N<br/>nome | anteprima | tag | badge<br/>modifica | copia | esegui"]
+  empty["Stato vuoto<br/>benvenuto, sezione vuota, nessun risultato"]
+  run_confirm["RunConfirmDialog"]
+  status_bar["SyncStatusBar<br/>&#8594; SyncSetupDialog"]
 
   app --> sidebar
-  sidebar --> search
+  sidebar --> header
+  sidebar --> search_bar
   sidebar --> paned
-  sidebar --> bottom_bar
+  sidebar --> status_bar
+  header --> new_entry
+  header --> menu
+  search_bar --> search
+  search_bar --> sort_dd
   paned --> section_panel
-  paned --> right_panel
-  section_panel --> section_list
+  paned --> toast
+  section_panel --> section_row
   section_panel --> new_section
-  right_panel --> entry_list
-  right_panel --> sort_dd
+  toast --> entry_list
   entry_list --> entry_row
-  bottom_bar --> new_entry
-  bottom_bar --> lang_dd
-  bottom_bar --> sync_btn
-  bottom_bar --> sync_label
+  entry_list --> empty
+  entry_row --> run_confirm
 
   classDef root fill:#1d4ed8,stroke:#1e40af,color:#fff
   classDef container fill:#2563eb,stroke:#1d4ed8,color:#fff
@@ -218,7 +224,7 @@ graph TD
   classDef action fill:#d97706,stroke:#b45309,color:#fff
 
   class app root
-  class sidebar,paned,section_panel,right_panel,bottom_bar container
-  class search,section_list,entry_list,entry_row,sort_dd,sync_label,lang_dd leaf
-  class new_section,new_entry,sync_btn action
+  class sidebar,header,search_bar,paned,section_panel,toast,entry_list container
+  class search,sort_dd,section_row,entry_row,empty leaf
+  class new_entry,menu,new_section,run_confirm,status_bar action
 ```

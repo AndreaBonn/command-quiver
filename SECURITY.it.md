@@ -6,7 +6,8 @@
 
 | Versione | Supportata |
 |---|---|
-| 1.0.x | Sì |
+| 2.1.x | Sì |
+| < 2.1 | No |
 
 ## Segnalare una vulnerabilità
 
@@ -27,21 +28,24 @@ Il report dovrebbe includere:
 
 ## Misure di sicurezza
 
-Command Quiver by Bonn è un'applicazione desktop locale senza componenti esposti in rete. Non gestisce autenticazione, connessioni remote o credenziali utente. Le seguenti misure sono implementate:
+Command Quiver by Bonn è un'applicazione desktop locale. L'unico traffico di rete è la sincronizzazione GitHub, facoltativa, che parla con `api.github.com` in HTTPS usando un token fornito da te. Le misure adottate sono:
 
-- **Query parametrizzate**: tutte le operazioni database usano placeholder `?`, nessuna concatenazione di stringhe (`db/queries.py`)
-- **Validazione input**: le impostazioni vengono validate al caricamento con valori limitati e controlli su insiemi ammessi (`core/settings.py:40-49`)
-- **Vincoli database**: CHECK constraint sul tipo di voce, foreign key enforcement abilitato (`db/database.py:24, 80`)
-- **Nessun shell=True nelle chiamate subprocess**: tutte le invocazioni subprocess passano argomenti come lista (`core/executor.py:50`, `app.py:150`)
+- **Query parametrizzate**: ogni valore che arriva dall'utente, da un file di import o dal sync viene passato con placeholder `?`, mai concatenato nell'SQL (`db/*_repository.py`)
+- **Validazione input**: le impostazioni vengono validate al caricamento con valori limitati e controlli su insiemi ammessi (`core/settings.py`); i file importati hanno un tetto di 10.000 voci e 100.000 caratteri per campo (`db/entry_import.py`)
+- **Vincoli database**: CHECK constraint sui tipi di voce e di tombstone, foreign key enforcement abilitato (`db/schema.py`, `db/database.py`)
+- **Nessun shell=True nelle chiamate subprocess**: il terminale viene avviato con una lista di argomenti e il comando è protetto con `shlex.quote` (`core/executor.py`)
+- **Conferma prima di eseguire**: un comando shell parte solo dopo una finestra di conferma, che si può disattivare una voce alla volta (`ui/run_confirm.py`)
+- **Token di sync leggibile solo dal proprietario**: il token GitHub sta in un file a parte, creato direttamente con permessi 600 e non ristretto dopo (`core/settings.py`)
 - **Dependency lockfile**: `uv.lock` blocca le versioni di tutte le dipendenze
 
 ## Considerazioni di sicurezza per gli utenti
 
-- Il database SQLite (`vault.db`) è salvato senza cifratura in `~/.local/share/command-quiver/`. Se salvi informazioni sensibili nelle voci, proteggi questa directory con permessi file appropriati.
-- I comandi shell vengono eseguiti così come sono in gnome-terminal. Verifica i comandi prima dell'esecuzione, specialmente se importati da fonti esterne.
-- I file di log in `~/.local/share/command-quiver/logs/` possono contenere nomi delle voci. Limita l'accesso se i nomi sono sensibili.
-- L'interfaccia D-Bus (`com.github.commandquiver.App`) è registrata sul session bus senza verifica del mittente. Qualsiasi processo in esecuzione nella stessa sessione utente può invocare metodi come Toggle, NewEntry, ChangeLanguage e Quit. Questo è standard per applicazioni desktop, ma significa che un processo locale compromesso potrebbe controllare l'applicazione.
-- **Trust model import JSON**: la funzione di importazione (`db/queries.py:import_entries`) accetta voci di tipo `shell` il cui contenuto viene eseguito letteralmente quando l'utente clicca "Esegui". I file JSON importati sono trattati come input fidato — non c'è dialog di conferma né sandboxing prima dell'esecuzione. Importa solo file da fonti di cui ti fidi.
+- Il database SQLite (`vault.db`) e i suoi backup automatici sono salvati senza cifratura in `~/.local/share/command-quiver/`. Se memorizzi informazioni sensibili nelle voci, proteggi questa directory con permessi adeguati.
+- Con la sincronizzazione attiva, le voci vengono copiate in JSON in chiaro nel repository GitHub che scegli. Tieni quel repository privato e dai al token accesso solo a quel repository, con Contents in lettura e scrittura e nient'altro.
+- I comandi shell vengono eseguiti così come sono in gnome-terminal. Controllali prima di eseguirli, soprattutto se importati o sincronizzati da altrove, e lascia attiva la conferma per le voci che non hai scritto tu.
+- I file di log in `~/.local/share/command-quiver/logs/` contengono i nomi delle voci e i primi 80 caratteri dei comandi eseguiti. Limita l'accesso se sono informazioni sensibili.
+- L'app si registra sul session bus D-Bus come `Gtk.Application` standard (`com.github.commandquiver`) per garantire l'istanza singola. Qualsiasi processo della stessa sessione utente può attivarla, come per ogni applicazione desktop.
+- **Trust model import JSON**: l'import accetta voci di tipo `shell` il cui contenuto viene eseguito così com'è nel terminale. La conferma di esecuzione mostra prima il comando, a meno che non sia stata disattivata per quella voce. Importa solo file da fonti di cui ti fidi.
 
 ## Fuori ambito
 

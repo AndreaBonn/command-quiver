@@ -48,7 +48,7 @@ sono toccati dal pacchetto: restano intatti dopo installazione e rimozione.
 ## Installazione
 
 ```bash
-sudo apt install ./dist/command-quiver_1.0.0_all.deb
+sudo apt install ./dist/command-quiver_*_all.deb
 ```
 
 `apt install` con un percorso locale installa il pacchetto e risolve le

@@ -17,7 +17,19 @@ Libreria personale di prompt AI e comandi shell per il desktop GNOME. Cerca, org
 
 ## Panoramica
 
-Command Quiver by Bonn offre accesso rapido a prompt AI e comandi shell usati di frequente. Le voci sono salvate in un database SQLite locale, organizzate in sezioni e ricercabili per nome. I prompt vengono copiati negli appunti; i comandi shell possono essere eseguiti direttamente in gnome-terminal.
+Command Quiver by Bonn offre accesso rapido a prompt AI e comandi shell usati di frequente. Le voci sono salvate in un database SQLite locale, organizzate in sezioni e tag, e ricercabili per nome, contenuto e tag. Un click su una voce la copia negli appunti; i comandi shell si possono anche eseguire in gnome-terminal, dopo una conferma.
+
+## Schermate
+
+![Finestra principale con le voci di esempio](docs/screenshots/it-main.png)
+
+| Voce nuova o in modifica | Conferma di esecuzione |
+|---|---|
+| ![Editor della voce](docs/screenshots/it-editor.png) | ![Conferma prima di eseguire nel terminale](docs/screenshots/it-run.png) |
+
+| Primo avvio | Sincronizzazione GitHub |
+|---|---|
+| ![Schermata di benvenuto con la libreria vuota](docs/screenshots/it-welcome.png) | ![Finestra della sincronizzazione GitHub](docs/screenshots/it-sync.png) |
 
 ## Architettura
 
@@ -59,14 +71,19 @@ graph LR
 
 ## Funzionalità
 
-- Pannello laterale con ricerca e ordinamento multiplo (alfabetico, cronologico, personalizzato)
-- Due tipi di voce: prompt AI (copia negli appunti) e comandi shell (esegui nel terminale)
-- Sezioni per organizzare le voci, con riordinamento drag-and-drop
+- Due tipi di voce: prompt AI (copiati negli appunti) e comandi shell (copiati, o eseguiti in gnome-terminal dopo una conferma che si può disattivare voce per voce)
+- Ricerca su nomi, contenuti e tag, con sei ordinamenti: più recenti, meno recenti, nome A-Z, nome Z-A, personale, più usati
+- Sezioni con il conteggio delle voci, e tag mostrati come etichette: un click su un tag filtra per quel tag
+- Ordine personale con trascinamento o `Alt+↑/↓`
+- L'eliminazione di una voce si può annullare per 5 secondi
+- Schermata di benvenuto al primo avvio, con 6 voci di esempio da provare
+- Import ed export dell'intera libreria in JSON
+- Scorciatoie da tastiera (`Ctrl+?` le elenca)
 - Interfaccia bilingue (italiano / inglese) con cambio lingua live
-- Persistenza SQLite con WAL mode e recovery automatico da corruzione
+- Persistenza SQLite con WAL mode, backup automatici e recovery da corruzione
 - Singola istanza garantita via D-Bus
-- Impostazioni persistenti (ordinamento, dimensione finestra, lingua, tema)
-- Sincronizzazione tra dispositivi tramite repository privato GitHub
+- Impostazioni persistenti (ordinamento, dimensione finestra, lingua)
+- Sincronizzazione tra dispositivi tramite repository privato GitHub, con lo stato sempre visibile nella barra in basso
 
 ## Sincronizzazione multi-dispositivo
 
@@ -147,13 +164,12 @@ sequenceDiagram
 #### 3. Configura in Command Quiver
 
 1. Apri Command Quiver
-2. Clicca l'icona sync (ingranaggio) nell'angolo in basso a destra
+2. Clicca **Sincronizza tra dispositivi** nella barra in basso, oppure apri il menu principale (☰) e scegli **Sincronizzazione…**
 3. Compila i campi:
-   - **Proprietario repo**: il tuo username GitHub
-   - **Nome repo**: `command-quiver-sync`
-   - **Token**: incolla il token dal passo 2
-4. Clicca **Testa connessione** per verificare
-5. Se la connessione riesce, clicca **Attiva sync**
+   - **Repository**: `tuo-username/command-quiver-sync`, oppure incolla l'indirizzo del repository copiato da GitHub
+   - **Token GitHub**: incolla il token dal passo 2
+4. Clicca **Testa connessione** per verificare. Se fallisce, il messaggio dice perché (token scaduto, permesso mancante, repository non trovato, rete assente)
+5. Se la connessione riesce, clicca **Attiva sincronizzazione**
 
 #### 4. Configura gli altri computer
 
@@ -218,22 +234,37 @@ Avvia l'applicazione:
 uv run python command_quiver/main.py
 ```
 
-La finestra principale si apre all'avvio. Chiudendola (pulsante di chiusura o `Esc`) l'applicazione termina, eseguendo prima una sincronizzazione finale e salvando lo stato.
+La finestra principale si apre all'avvio. Chiudendola (pulsante di chiusura o `Ctrl+Q`) l'applicazione termina, eseguendo prima una sincronizzazione finale e salvando lo stato.
 
-Dalla sidebar:
+Nella finestra principale:
 
-- Click su **+ Nuova voce** per creare un prompt o un comando shell
-- Click su una voce per copiarla negli appunti (prompt) o eseguirla (comandi shell)
-- Usa la barra di ricerca per filtrare le voci per nome
-- Cambia ordinamento dal dropdown (Recenti, A-Z, Z-A, Personale)
-- Cambia lingua dell'interfaccia (italiano / inglese) dal selettore nella barra inferiore
-- Gestisci le sezioni con **+ Sezione**, oppure click destro su una sezione per rinominare/eliminare
+- Click su **Nuova** nella barra del titolo (o `Ctrl+N`) per creare un prompt o un comando shell. Il nome è facoltativo: se resta vuoto si usa la prima riga del contenuto
+- Click su una voce per copiarla negli appunti. I comandi shell hanno anche il pulsante ▶, che li esegue nel terminale
+- Scrivi nella barra di ricerca per filtrare per nome, contenuto e tag; `Invio` copia il primo risultato, `Esc` svuota la ricerca
+- Scegli l'ordinamento dal menu a tendina accanto alla ricerca
+- Gestisci le sezioni con **+ Sezione**; rinomina o elimina una sezione dal suo menu o con il click destro
+- Apri il menu principale (☰) per lingua, sincronizzazione, import/export, scorciatoie e informazioni
+
+### Scorciatoie da tastiera
+
+| Scorciatoia | Azione |
+|---|---|
+| `Ctrl+F` | Vai alla ricerca |
+| `Ctrl+N` | Nuova voce |
+| `Invio` | Copia il primo risultato |
+| `Esc` | Svuota la ricerca |
+| `Alt+↑` / `Alt+↓` | Sposta la voce selezionata (ordine Personale) |
+| `Ctrl+S` | Salva (nella finestra della voce) |
+| `Ctrl+Invio` | Salva e copia (nella finestra della voce) |
+| `Ctrl+?` | Mostra l'elenco delle scorciatoie |
+| `Ctrl+Q` | Esci |
 
 ### Percorsi dei dati
 
 | Percorso | Contenuto |
 |---|---|
 | `~/.local/share/command-quiver/vault.db` | Database SQLite |
+| `~/.local/share/command-quiver/vault.auto.bak.*` | Backup automatici (ogni 5 avvii, restano gli ultimi 3) |
 | `~/.config/command-quiver/settings.json` | Impostazioni utente |
 | `~/.local/share/command-quiver/logs/` | Log applicazione |
 

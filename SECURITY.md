@@ -6,7 +6,8 @@
 
 | Version | Supported |
 |---|---|
-| 1.0.x | Yes |
+| 2.1.x | Yes |
+| < 2.1 | No |
 
 ## Reporting a Vulnerability
 
@@ -27,21 +28,24 @@ Your report should include:
 
 ## Security Measures
 
-Command Quiver by Bonn is a local desktop application with no network-facing components. It does not handle authentication, remote connections, or sensitive user credentials. The following measures are implemented:
+Command Quiver by Bonn is a local desktop application. Its only network traffic is the optional GitHub sync, which talks to `api.github.com` over HTTPS with a token you provide. The following measures are implemented:
 
-- **Parameterized queries**: all database operations use `?` placeholders, no string concatenation (`db/queries.py`)
-- **Input validation**: settings are validated on load with bounded values and allowed-set checks (`core/settings.py:40-49`)
-- **Database constraints**: CHECK constraint on entry type, foreign key enforcement enabled (`db/database.py:24, 80`)
-- **No shell=True in subprocess calls**: all subprocess invocations pass arguments as lists (`core/executor.py:50`, `app.py:150`)
+- **Parameterized queries**: every value that comes from the user, from an import file or from sync is bound with `?` placeholders, never concatenated into SQL (`db/*_repository.py`)
+- **Input validation**: settings are validated on load with bounded values and allowed-set checks (`core/settings.py`); imported files are capped at 10,000 entries and 100,000 characters per field (`db/entry_import.py`)
+- **Database constraints**: CHECK constraints on entry and tombstone types, foreign key enforcement enabled (`db/schema.py`, `db/database.py`)
+- **No shell=True in subprocess calls**: the terminal is started with an argument list, and the command is quoted with `shlex.quote` (`core/executor.py`)
+- **Confirmation before running**: a shell command runs only after a confirmation dialog, which can be turned off one entry at a time (`ui/run_confirm.py`)
+- **Sync token stored owner-only**: the GitHub token lives in its own file, created with permissions 600 rather than tightened afterwards (`core/settings.py`)
 - **Dependency lockfile**: `uv.lock` pins all dependency versions
 
 ## Security Considerations for Users
 
-- The SQLite database (`vault.db`) is stored unencrypted in `~/.local/share/command-quiver/`. If you store sensitive information in entries, protect this directory with appropriate file permissions.
-- Shell commands are executed as-is in gnome-terminal. Review commands before execution, especially if imported from external sources.
-- Log files in `~/.local/share/command-quiver/logs/` may contain entry names. Restrict access if entry names are sensitive.
-- The D-Bus interface (`com.github.commandquiver.App`) is registered on the session bus without sender verification. Any process running under the same user session can invoke methods such as Toggle, NewEntry, ChangeLanguage, and Quit. This is standard for desktop applications but means a compromised local process could control the application.
-- **JSON import trust model**: the import feature (`db/queries.py:import_entries`) accepts entries of type `shell` whose content is executed verbatim when the user clicks "Run". Imported JSON files are treated as trusted input — there is no confirmation dialog or sandboxing before execution. Only import files from sources you trust.
+- The SQLite database (`vault.db`) and its automatic backups are stored unencrypted in `~/.local/share/command-quiver/`. If you store sensitive information in entries, protect this directory with appropriate file permissions.
+- With sync enabled, your entries are copied as plain JSON to the GitHub repository you choose. Keep that repository private, and give the token access to that repository only, with Contents read and write and nothing more.
+- Shell commands are executed as-is in gnome-terminal. Review commands before running them, especially if imported or synced from elsewhere, and keep the confirmation on for entries you did not write.
+- Log files in `~/.local/share/command-quiver/logs/` contain entry names and the first 80 characters of the commands you run. Restrict access if those are sensitive.
+- The app registers on the D-Bus session bus as a standard `Gtk.Application` (`com.github.commandquiver`) to enforce a single instance. Any process running under the same user session can activate it, as with any desktop application.
+- **JSON import trust model**: the import accepts entries of type `shell` whose content runs verbatim in the terminal. The run confirmation shows the command first, unless it has been turned off for that entry. Only import files from sources you trust.
 
 ## Out of Scope
 

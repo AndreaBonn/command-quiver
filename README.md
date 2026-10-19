@@ -17,7 +17,19 @@ A personal library of AI prompts and shell commands for the GNOME desktop. Searc
 
 ## Overview
 
-Command Quiver by Bonn gives you quick access to frequently used AI prompts and shell commands. Entries are stored in a local SQLite database, organized into sections, and searchable by name. Prompts are copied to the clipboard; shell commands can be executed directly in gnome-terminal.
+Command Quiver by Bonn gives you quick access to frequently used AI prompts and shell commands. Entries are stored in a local SQLite database, organized into sections and tags, and searchable by name, content and tag. Clicking an entry copies it to the clipboard; shell commands can also be run in gnome-terminal, after a confirmation.
+
+## Screenshots
+
+![Main window with the sample entries](docs/screenshots/en-main.png)
+
+| New or edited entry | Run confirmation |
+|---|---|
+| ![Entry editor](docs/screenshots/en-editor.png) | ![Run in the terminal confirmation](docs/screenshots/en-run.png) |
+
+| First launch | GitHub sync |
+|---|---|
+| ![Welcome screen on an empty library](docs/screenshots/en-welcome.png) | ![GitHub sync dialog](docs/screenshots/en-sync.png) |
 
 ## Architecture
 
@@ -59,14 +71,19 @@ graph LR
 
 ## Features
 
-- Sidebar panel with search and multiple sort modes (alphabetical, chronological, custom)
-- Two entry types: AI prompts (copy to clipboard) and shell commands (run in terminal)
-- Sections for organizing entries, with drag-and-drop reordering
+- Two entry types: AI prompts (copied to the clipboard) and shell commands (copied, or run in gnome-terminal after a confirmation you can turn off per entry)
+- Search across names, content and tags, with six sort modes: newest, oldest, name A-Z, name Z-A, custom, most used
+- Sections with entry counts, and tags shown as chips: click a tag to filter by it
+- Custom order by drag-and-drop or `Alt+↑/↓`
+- Deleting an entry can be undone for 5 seconds
+- Welcome screen on first launch, with 6 sample entries to try
+- Import and export of the whole library as JSON
+- Keyboard shortcuts (`Ctrl+?` lists them)
 - Bilingual interface (Italian / English) with live language switching
-- SQLite persistence with WAL mode and automatic recovery from corruption
+- SQLite persistence with WAL mode, automatic backups and recovery from corruption
 - Single-instance enforcement via D-Bus
-- Persistent settings (sort order, window size, language, theme)
-- Cross-device sync via GitHub private repository
+- Persistent settings (sort order, window size, language)
+- Cross-device sync via GitHub private repository, with its status always visible in the bottom bar
 
 ## Multi-Device Sync
 
@@ -147,12 +164,11 @@ sequenceDiagram
 #### 3. Configure in Command Quiver
 
 1. Open Command Quiver
-2. Click the sync icon (gear) in the bottom-right corner
+2. Click **Sync across devices** in the bottom bar, or open the main menu (☰) and choose **Sync…**
 3. Fill in the fields:
-   - **Repo owner**: your GitHub username
-   - **Repo name**: `command-quiver-sync`
-   - **Token**: paste the token from step 2
-4. Click **Test connection** to verify
+   - **Repository**: `your-username/command-quiver-sync`, or paste the repository address copied from GitHub
+   - **GitHub token**: paste the token from step 2
+4. Click **Test connection** to verify. If it fails, the message says why (expired token, missing permission, repository not found, no network)
 5. If successful, click **Enable sync**
 
 #### 4. Set up additional computers
@@ -218,22 +234,37 @@ Start the application:
 uv run python command_quiver/main.py
 ```
 
-The main window opens on launch. Closing it (window close button or `Esc`) quits the application, running a final sync and saving your state first.
+The main window opens on launch. Closing it (window close button or `Ctrl+Q`) quits the application, running a final sync and saving your state first.
 
-From the sidebar:
+In the main window:
 
-- Click **+ New entry** to create a prompt or shell command
-- Click an entry to copy it to the clipboard (prompts) or execute it (shell commands)
-- Use the search bar to filter entries by name
-- Switch sort mode with the dropdown (Recent, A-Z, Z-A, Custom)
-- Switch interface language (Italian / English) with the selector in the bottom bar
-- Manage sections with **+ Section**, or right-click a section to rename/delete
+- Click **New** in the title bar (or press `Ctrl+N`) to create a prompt or shell command. The name is optional: if you leave it empty, the first line of the content is used
+- Click an entry to copy it to the clipboard. Shell commands also have a ▶ button that runs them in the terminal
+- Type in the search bar to filter by name, content and tag; `Enter` copies the first match, `Esc` clears the search
+- Pick the sort order from the dropdown next to the search bar
+- Manage sections with **+ Section**; rename or delete one from its menu or with a right-click
+- Open the main menu (☰) for language, sync, import/export, keyboard shortcuts and About
+
+### Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+F` | Go to search |
+| `Ctrl+N` | New entry |
+| `Enter` | Copy the first match |
+| `Esc` | Clear the search |
+| `Alt+↑` / `Alt+↓` | Move the selected entry (Custom order) |
+| `Ctrl+S` | Save (in the entry window) |
+| `Ctrl+Enter` | Save and copy (in the entry window) |
+| `Ctrl+?` | Show the shortcut list |
+| `Ctrl+Q` | Quit |
 
 ### Data locations
 
 | Path | Content |
 |---|---|
 | `~/.local/share/command-quiver/vault.db` | SQLite database |
+| `~/.local/share/command-quiver/vault.auto.bak.*` | Automatic backups (every 5 launches, last 3 kept) |
 | `~/.config/command-quiver/settings.json` | User settings |
 | `~/.local/share/command-quiver/logs/` | Application logs |
 
