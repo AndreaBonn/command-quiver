@@ -38,7 +38,6 @@ def import_entries(
 ) -> int:
     """Importa il prefisso ammesso della libreria, creando le sezioni mancanti.
 
-
     Returns
     -------
     int
@@ -50,8 +49,7 @@ def import_entries(
         )
         data = data[:MAX_IMPORT_ENTRIES]
     imported = 0
-    # Chiave casefold come UNICODE_LOWER nel DB: "git" e "Git" sono la stessa sezione,
-    # e con la chiave esatta create() sollevava DuplicateSectionError a import avviato
+    # Casefold come UNICODE_LOWER: "git" è la "Git" esistente, create() la rifiuterebbe
     section_map = {s.name.casefold(): s.id for s in section_repo.get_all()}
     for item in data:
         normalized = normalize_import_item(item=item)
