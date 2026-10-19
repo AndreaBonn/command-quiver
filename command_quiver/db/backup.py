@@ -57,4 +57,4 @@ def _prune_backups(backup_dir: Path) -> None:
             old_backup.unlink()
             logger.debug("Backup obsoleto rimosso: %s", old_backup.name)
         except OSError:
-            pass
+            logger.warning("Impossibile rimuovere backup obsoleto: %s", old_backup)
