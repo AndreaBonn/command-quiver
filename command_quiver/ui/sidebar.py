@@ -12,6 +12,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk
 
 from command_quiver.core.i18n import get_language, t
 from command_quiver.core.settings import Settings, save_settings
+from command_quiver.core.sync_engine import SyncResult
 from command_quiver.db.database import Database
 from command_quiver.db.entry_repository import EntryRepository
 from command_quiver.db.models import Entry
@@ -211,11 +212,9 @@ class SidebarPanel(Gtk.Window):
         """Una sincronizzazione è partita."""
         self._status_bar.set_pending()
 
-    def update_sync_status(self, result) -> None:
+    def update_sync_status(self, result: SyncResult) -> None:
         """Esito reale di una sincronizzazione."""
-        self._status_bar.set_result(
-            result.success, result.entries_pulled, result.entries_pushed, result.message
-        )
+        self._status_bar.set_result(result)
 
     def _notify_data_changed(self) -> None:
         if self._callbacks.on_data_changed:

@@ -9,6 +9,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Pango
 
 from command_quiver.core.settings import Settings
+from command_quiver.core.sync_engine import SyncResult
 from command_quiver.core.sync_status import SyncState, SyncStatusView, describe_sync_status
 
 
@@ -23,7 +24,7 @@ class SyncStatusBar(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self._settings = settings
         self._pending = False
-        self._outcome: tuple[bool, int, int] | None = None
+        self._outcome: SyncResult | None = None
         self.add_css_class("status-bar")
         self._dot = Gtk.Box(valign=Gtk.Align.CENTER)
         self._dot.add_css_class("status-dot")
@@ -48,11 +49,11 @@ class SyncStatusBar(Gtk.Box):
         self._pending = True
         self.refresh()
 
-    def set_result(self, success: bool, pulled: int, pushed: int, message: str) -> None:
+    def set_result(self, result: SyncResult) -> None:
         """Esito reale di una sincronizzazione; il messaggio d'errore va nel tooltip."""
         self._pending = False
-        self._outcome = (success, pulled, pushed)
-        self.set_tooltip_text(None if success else message)
+        self._outcome = result
+        self.set_tooltip_text(None if result.success else result.message)
         self.refresh()
 
     def reset(self) -> None:
@@ -65,10 +66,9 @@ class SyncStatusBar(Gtk.Box):
         """Ricalcola testo e colore (anche il tempo relativo dell'ultima sync)."""
         self._show_view(
             describe_sync_status(
-                enabled=self._settings.sync.enabled,
+                self._settings.sync,
                 pending=self._pending,
                 outcome=self._outcome,
-                last_sync=self._settings.sync.last_sync,
                 now=datetime.now(),
             )
         )

@@ -6,6 +6,7 @@ import pytest
 
 from command_quiver.core.i18n import init as i18n_init
 from command_quiver.core.settings import Settings
+from command_quiver.core.sync_engine import SyncResult
 from tests.conftest import requires_display
 
 
@@ -26,7 +27,7 @@ class TestSyncStatusBar:
         from command_quiver.ui.status_bar import SyncStatusBar
 
         bar = SyncStatusBar(_enabled(), on_open_sync=MagicMock())
-        bar.set_result(success=False, pulled=0, pushed=0, message="Token scaduto")
+        bar.set_result(SyncResult(success=False, message="Token scaduto"))
         assert bar.text == "Sincronizzazione non riuscita"
         assert bar.get_tooltip_text() == "Token scaduto"
 
@@ -40,7 +41,7 @@ class TestSyncStatusBar:
 
         opened = MagicMock()
         bar = SyncStatusBar(_enabled(), on_open_sync=opened)
-        bar.set_result(success=False, pulled=0, pushed=0, message="x")
+        bar.set_result(SyncResult(success=False, message="x"))
         action = [b for b in _buttons(bar) if b.get_visible()]
         assert len(action) == 1
 
