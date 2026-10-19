@@ -44,7 +44,7 @@ jobs:
       - run: uv sync --dev
 
       - name: Run tests
-        run: xvfb-run uv run pytest --cov=command_quiver --cov-branch --cov-report=term-missing --cov-report=json --cov-fail-under=95 --junitxml=test-results.xml
+        run: xvfb-run uv run pytest --cov=command_quiver --cov-branch --cov-report=term-missing --cov-report=json --cov-fail-under=98 --junitxml=test-results.xml
 
       - name: Generate test badge
         if: always()
