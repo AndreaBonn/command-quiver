@@ -6,12 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+# Default minimo: solo il job test, che pubblica i badge, chiede la scrittura
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
       - run: uv sync --dev
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -21,8 +27,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
+      # Credenziali mantenute: il passo "Commit badges" fa push su main
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
 
       - name: Install system dependencies
         run: |
@@ -37,7 +44,7 @@ jobs:
       - run: uv sync --dev
 
       - name: Run tests
-        run: xvfb-run uv run pytest --cov=command_quiver --cov-report=term-missing --cov-report=json --cov-fail-under=70 --junitxml=test-results.xml
+        run: xvfb-run uv run pytest --cov=command_quiver --cov-branch --cov-report=term-missing --cov-report=json --cov-fail-under=95 --junitxml=test-results.xml
 
       - name: Generate test badge
         if: always()
