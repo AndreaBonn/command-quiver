@@ -15,7 +15,8 @@ from command_quiver.db.entry_repository import EntryRepository
 from command_quiver.db.models import Entry, EntryCreate, EntryUpdate
 from command_quiver.db.section_repository import SectionRepository
 from command_quiver.ui import library_actions
-from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+from command_quiver.ui.editor_request import EditorRequest
+from command_quiver.ui.entry_editor import EntryEditorDialog
 from command_quiver.ui.pending_delete import UNDO_WINDOW_MS, PendingDeletion
 from command_quiver.ui.toast import ToastOverlay
 

@@ -40,7 +40,8 @@ class TestEntryEditorValidation:
     def _create_dialog(self, entry=None, on_save=None):
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -121,7 +122,8 @@ class TestEntryEditorDataCollection:
     def _create_dialog(self, entry=None):
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -204,7 +206,8 @@ class TestEntryEditorPopulation:
     def test_populates_name_from_entry(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -222,7 +225,8 @@ class TestEntryEditorPopulation:
     def test_populates_content_from_entry(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -243,7 +247,8 @@ class TestEntryEditorPopulation:
     def test_populates_shell_type(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -260,7 +265,8 @@ class TestEntryEditorPopulation:
     def test_populates_tags(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -279,7 +285,8 @@ class TestEntryEditorPopulation:
     def test_title_differs_for_create_and_edit(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -304,7 +311,8 @@ class TestEntryEditorSave:
     def test_submit_calls_callback_on_valid_input(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -327,7 +335,8 @@ class TestEntryEditorSave:
     def test_submit_does_not_call_on_invalid(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -344,7 +353,8 @@ class TestEntryEditorSave:
     def test_submit_with_copy_copies_content(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -371,7 +381,8 @@ class TestEntryEditorKeyboard:
     def test_escape_closes_dialog(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
@@ -387,7 +398,8 @@ class TestEntryEditorKeyboard:
     def test_ctrl_s_returns_true(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
@@ -402,7 +414,8 @@ class TestEntryEditorKeyboard:
     def test_ctrl_w_closes_dialog(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
@@ -425,7 +438,8 @@ class TestEntryEditorKeyboard:
     ) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
@@ -445,7 +459,8 @@ class TestEntryEditorKeyboard:
     def test_unhandled_key_returns_false(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
@@ -460,7 +475,8 @@ class TestEntryEditorKeyboard:
     def test_ctrl_enter_returns_true(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
@@ -480,7 +496,8 @@ class TestEntryEditorDelete:
     def test_submit_with_copy_invalid_does_not_copy(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -499,7 +516,8 @@ class TestEntryEditorDelete:
     def test_delete_button_present_in_edit_mode(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -518,7 +536,8 @@ class TestEntryEditorDelete:
     def test_no_delete_button_in_create_mode(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -533,7 +552,8 @@ class TestEntryEditorDelete:
     def test_submit_without_callback_noop(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -560,7 +580,8 @@ class TestEntryEditorUx:
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         inputs = {
             k: kwargs.pop(k) for k in ("entry", "initial_section_id", "known_tags") if k in kwargs
@@ -620,7 +641,8 @@ class TestEntryEditorSectionFollowsType:
     def _dialog(self):
         from gi.repository import Gtk
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         sections = [
             Section(id=1, name="Comandi shell", icon="utilities-terminal", position=0),
@@ -653,7 +675,8 @@ class TestEntryEditorDeleteWithoutConfirmation:
     def test_delete_calls_callback_immediately_and_closes(self, gtk_init) -> None:
         from gi.repository import Gtk
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         on_delete = MagicMock()
         dialog = EntryEditorDialog(
@@ -672,7 +695,8 @@ class TestEditorKeysAndTypes:
     def _dialog(self, entry=None, on_save=None):
         from gi.repository import Gtk
 
-        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
+        from command_quiver.ui.editor_request import EditorRequest
+        from command_quiver.ui.entry_editor import EntryEditorDialog
 
         return EntryEditorDialog(
             parent=Gtk.Window(),
@@ -858,43 +882,3 @@ def _button_showing(root, text: str):
     ]
     assert len(matches) == 1, f"pulsanti con testo {text!r}: {len(matches)}"
     return matches[0]
-
-
-class TestEntryPayload:
-    """entry_payload è pura: decide nome e tipo di salvataggio senza finestra."""
-
-    def test_entry_payload_blank_name_takes_first_content_line(self) -> None:
-        from command_quiver.ui.entry_editor import entry_payload
-
-        draft = EntryCreate(name="   ", content="ls -la /tmp\nsecond", section_id=2)
-
-        assert entry_payload(draft, entry_id=None).name == "ls -la /tmp"
-
-    def test_entry_payload_written_name_wins_over_content(self) -> None:
-        from command_quiver.ui.entry_editor import entry_payload
-
-        draft = EntryCreate(name=" Elenco tmp ", content="ls -la /tmp")
-
-        assert entry_payload(draft, entry_id=None).name == "Elenco tmp"
-
-    def test_entry_payload_new_entry_is_a_create_with_all_fields(self) -> None:
-        from command_quiver.ui.entry_editor import entry_payload
-
-        draft = EntryCreate(
-            name="Build", content="make", section_id=3, type="shell", tags="ci,make"
-        )
-
-        assert entry_payload(draft, entry_id=None) == EntryCreate(
-            name="Build", content="make", section_id=3, type="shell", tags="ci,make"
-        )
-
-    def test_entry_payload_edited_entry_is_an_update_of_that_id(self) -> None:
-        from command_quiver.ui.entry_editor import entry_payload
-
-        draft = EntryCreate(
-            name="Build", content="make", section_id=3, type="shell", tags="ci,make"
-        )
-
-        assert entry_payload(draft, entry_id=7) == EntryUpdate(
-            id=7, name="Build", content="make", section_id=3, type="shell", tags="ci,make"
-        )

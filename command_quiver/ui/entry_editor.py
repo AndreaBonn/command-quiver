@@ -1,8 +1,7 @@
 """Dialog modale per creazione e modifica voci."""
 
 import logging
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable
 from enum import Enum, auto
 
 import gi
@@ -13,8 +12,9 @@ from gi.repository import Gdk, Gtk
 
 from command_quiver.core.clipboard import copy_to_clipboard
 from command_quiver.core.i18n import t
-from command_quiver.core.presentation import join_tags, name_from_content, split_tags
-from command_quiver.db.models import Entry, EntryCreate, EntryUpdate, Section
+from command_quiver.core.presentation import join_tags, split_tags
+from command_quiver.db.models import EntryCreate, EntryUpdate
+from command_quiver.ui.editor_request import EditorRequest, entry_payload
 from command_quiver.ui.editor_widgets import (
     ContentField,
     SectionPicker,
@@ -70,43 +70,6 @@ def editor_command(keyval: int, ctrl: bool) -> EditorCommand:
     return EditorCommand.NONE
 
 
-def entry_payload(draft: EntryCreate, entry_id: int | None) -> EntryCreate | EntryUpdate:
-    """Dati da salvare a partire da quanto scritto nel form.
-
-    Parameters
-    ----------
-    draft : EntryCreate
-        Campi del form così come sono; il nome può essere vuoto.
-    entry_id : int | None
-        Voce in modifica, o None per una voce nuova.
-
-    Returns
-    -------
-    EntryCreate | EntryUpdate
-        Il nome, se vuoto, è la prima riga del contenuto; con ``entry_id``
-        è l'aggiornamento di quella voce.
-    """
-    name = draft.name.strip() or name_from_content(draft.content)
-    fields = dict(content=draft.content, section_id=draft.section_id, type=draft.type)
-    if entry_id is None:
-        return EntryCreate(name=name, tags=draft.tags, **fields)
-    return EntryUpdate(id=entry_id, name=name, tags=draft.tags, **fields)
-
-
-@dataclass(frozen=True)
-class EditorRequest:
-    """Cosa apre l'editor: la voce da modificare (None per una nuova) e il suo contesto.
-
-    ``initial_section_id`` è la sezione aperta nella finestra, usata solo per una
-    voce nuova; ``known_tags`` alimenta i suggerimenti del campo tag.
-    """
-
-    sections: list[Section]
-    entry: Entry | None = None
-    initial_section_id: int | None = None
-    known_tags: Sequence[str] = ()
-
-
 class EntryEditorDialog(Gtk.Window):
     """Dialog per creare o modificare una voce (prompt o comando shell).
 
@@ -132,7 +95,7 @@ class EntryEditorDialog(Gtk.Window):
             default_height=600,
         )
         self._entry = entry
-        self._sections = request.sections
+        self._sections = list(request.sections)
         self._on_save = on_save
         self._on_delete = on_delete
         self._is_edit = entry is not None
@@ -304,7 +267,7 @@ class EntryEditorDialog(Gtk.Window):
             type=self._type_selector.entry_type,
             tags=join_tags(self._tag_input.tags),
         )
-        return entry_payload(draft, entry_id=self._entry.id if self._is_edit else None)
+        return entry_payload(draft=draft, entry_id=self._entry.id if self._is_edit else None)
 
     def _submit(self, copy: bool) -> None:
         """Salva la voce, con ``copy`` copia anche il contenuto negli appunti, e chiude."""

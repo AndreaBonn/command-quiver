@@ -50,7 +50,8 @@ command_quiver/
 │   ├── entry_list.py     # Lista voci: anteprima, tag, copia/esegui, Alt+↑/↓ (+ row_dnd.py: trascinamento)
 │   ├── empty_states.py   # Primo avvio, sezione vuota, ricerca senza risultati
 │   ├── run_confirm.py    # Conferma prima di eseguire ("non chiedere più" per voce)
-│   ├── entry_editor.py   # Dialog creazione/modifica (+ editor_widgets.py, tag_input.py)
+│   ├── entry_editor.py   # Dialog creazione/modifica (+ editor_widgets.py, tag_input.py,
+│   │                     #   editor_request.py: input del dialog e payload puro)
 │   ├── section_panel.py  # Pannello sezioni con CRUD (+ section_row.py)
 │   ├── section_manager.py # Dialog gestione sezioni (validazione duplicati)
 │   ├── sync_dialog.py    # Dialog configurazione sync GitHub
