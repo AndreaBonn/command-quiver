@@ -5,7 +5,10 @@ from pathlib import Path
 import pytest
 
 from command_quiver.db.database import Database
-from command_quiver.db.queries import EntryCreate, EntryRepository, SectionRepository
+from command_quiver.db.entry_repository import EntryRepository
+from command_quiver.db.models import EntryCreate
+from command_quiver.db.section_repository import SectionRepository
+from command_quiver.db.sync_repository import SyncRepository
 
 
 @pytest.fixture
@@ -87,12 +90,14 @@ def test_get_all_usage_sort_orders_by_count_desc(entries: EntryRepository, secti
     assert [e.name for e in result] == ["C", "A", "B"]
 
 
-def test_usage_count_is_not_exported_for_sync(entries: EntryRepository, section_id: int) -> None:
+def test_usage_count_is_not_exported_for_sync(
+    sync_repo: SyncRepository, entries: EntryRepository, section_id: int
+) -> None:
     """Il contatore è locale per device: non deve finire nel payload di sync."""
     entry = entries.create(EntryCreate(name="A", content="x", section_id=section_id))
     entries.bump_usage(entry.id)
 
-    exported = entries.export_for_sync()
+    exported = sync_repo.export_for_sync()
 
     assert exported, "atteso almeno un record esportato"
     assert "use_count" not in exported[0]

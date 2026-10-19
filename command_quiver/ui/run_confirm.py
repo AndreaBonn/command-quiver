@@ -9,7 +9,7 @@ from gi.repository import Gdk, Gtk
 
 from command_quiver.core.i18n import t
 from command_quiver.core.settings import Settings, save_settings
-from command_quiver.db.queries import Entry
+from command_quiver.db.models import Entry
 from command_quiver.ui.entry_list import run_entry
 
 _MAX_PREVIEW_CHARS = 600

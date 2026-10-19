@@ -18,11 +18,10 @@ from command_quiver.core.sync_merge import (
 )
 from command_quiver.core.timestamps import utc_now_iso
 from command_quiver.db.database import Database
-from command_quiver.db.queries import (
-    EntryRepository,
-    SectionRepository,
-    TombstoneRepository,
-)
+from command_quiver.db.models import SyncedEntry
+from command_quiver.db.section_repository import SectionRepository
+from command_quiver.db.sync_repository import SyncRepository
+from command_quiver.db.tombstone_repository import TombstoneRepository
 
 logger = logging.getLogger(__name__)
 
@@ -110,9 +109,9 @@ class SyncEngine:
         if client is None:
             return SyncResult(success=False, message="Sync non configurato")
         connection = self._db.create_connection()
-        self._section_repo = SectionRepository(connection)
-        self._entry_repo = EntryRepository(connection)
-        self._tombstone_repo = TombstoneRepository(connection)
+        self._section_repo = SectionRepository(connection=connection)
+        self._sync_repo = SyncRepository(connection=connection)
+        self._tombstone_repo = TombstoneRepository(connection=connection)
         try:
             merged, sha, result = self._pull_and_apply(client=client)
             new_sha = self._push(client=client, merged=merged, sha=sha)
@@ -168,7 +167,7 @@ class SyncEngine:
     def _export_local(self) -> dict:
         return build_sync_state(
             sections=[vars(s) for s in self._section_repo.get_all()],
-            entries=self._entry_repo.export_for_sync(),
+            entries=self._sync_repo.export_for_sync(),
             tombstones=self._tombstone_repo.get_all(),
             now=utc_now_iso(),
         )
@@ -207,11 +206,11 @@ class SyncEngine:
         uid = tombstone["uuid"]
         entity_type = tombstone["entity_type"]
         if entity_type == "entry":
-            self._entry_repo.delete_by_uuid(entry_uuid=uid)
-        elif uid in local_sections and not self._section_repo.delete_by_uuid(section_uuid=uid):
+            self._sync_repo.delete_entry_by_uuid(entry_uuid=uid)
+        elif uid in local_sections and not self._sync_repo.delete_section_by_uuid(section_uuid=uid):
             # La sezione predefinita riaffermata deve vincere nel push senza tombstone (B4).
             section = local_sections[uid]
-            self._section_repo.update_from_sync(
+            self._sync_repo.update_section_from_sync(
                 section_uuid=uid,
                 name=section["name"],
                 icon=section["icon"],
@@ -230,7 +229,7 @@ class SyncEngine:
                 "Sync: rinomina remota di %s ignorata, nome '%s' già in uso", uid, section["name"]
             )
             return 0
-        self._section_repo.update_from_sync(
+        self._sync_repo.update_section_from_sync(
             section_uuid=uid,
             name=section["name"],
             icon=section.get("icon", "folder"),
@@ -239,7 +238,7 @@ class SyncEngine:
         return 1
 
     def _apply_entry(self, entry: dict, section_id: int | None, is_new: bool) -> None:
-        fields = dict(
+        data = SyncedEntry(
             entry_uuid=entry["uuid"],
             name=entry["name"],
             content=entry["content"],
@@ -247,11 +246,12 @@ class SyncEngine:
             entry_type=entry.get("type", "prompt"),
             tags=entry.get("tags", ""),
             updated_at=entry.get("updated_at", ""),
+            created_at=entry.get("created_at", "") if is_new else "",
         )
         if is_new:
-            self._entry_repo.create_from_sync(**fields, created_at=entry.get("created_at", ""))
+            self._sync_repo.create_from_sync(data=data)
         else:
-            self._entry_repo.update_from_sync(**fields)
+            self._sync_repo.update_entry_from_sync(data=data)
 
     def _pull_new_section(self, uid: str, remote_sec: dict, remote_sections: dict) -> int:
         """Porta in locale una sezione remota nuova. Restituisce 1 se l'ha creata.
@@ -262,14 +262,14 @@ class SyncEngine:
         """
         same_name = self._section_repo.get_by_name(name=remote_sec["name"])
         if same_name is None:
-            self._section_repo.create_with_uuid(
+            self._sync_repo.create_section_with_uuid(
                 name=remote_sec["name"],
                 section_uuid=uid,
                 icon=remote_sec.get("icon", "folder"),
             )
             return 1
         if same_name.uuid not in remote_sections:
-            self._section_repo.adopt_uuid(section_id=same_name.id, section_uuid=uid)
+            self._sync_repo.adopt_uuid(section_id=same_name.id, section_uuid=uid)
         else:
             logger.warning(
                 "Sync: sezione remota %s ignorata, nome '%s' già in uso", uid, remote_sec["name"]

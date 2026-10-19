@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from command_quiver.db.queries import Entry, EntryCreate, EntryUpdate, Section
+from command_quiver.db.models import Entry, EntryCreate, EntryUpdate, Section
 from tests.conftest import requires_display
 
 

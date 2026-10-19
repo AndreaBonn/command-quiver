@@ -7,7 +7,9 @@ import pytest
 
 from command_quiver.core.i18n import init as i18n_init
 from command_quiver.db.database import Database
-from command_quiver.db.queries import EntryCreate, EntryRepository, SectionRepository
+from command_quiver.db.entry_repository import EntryRepository
+from command_quiver.db.models import EntryCreate
+from command_quiver.db.section_repository import SectionRepository
 from tests.conftest import requires_display
 
 

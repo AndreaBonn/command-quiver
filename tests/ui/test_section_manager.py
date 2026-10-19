@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from command_quiver.db.queries import Section
+from command_quiver.db.models import Section
 from tests.conftest import requires_display
 
 

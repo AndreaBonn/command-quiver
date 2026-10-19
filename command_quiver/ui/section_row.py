@@ -8,7 +8,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gtk, Pango
 
 from command_quiver.core.i18n import t
-from command_quiver.db.queries import Section
+from command_quiver.db.models import Section
 
 ALL_ENTRIES_ICON = "view-grid-symbolic"
 FALLBACK_ICON = "folder-symbolic"

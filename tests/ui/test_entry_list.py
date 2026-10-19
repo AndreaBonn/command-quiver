@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from command_quiver.db.queries import Entry
+from command_quiver.db.models import Entry
 from tests.conftest import requires_display
 
 

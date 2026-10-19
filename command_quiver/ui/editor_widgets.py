@@ -5,7 +5,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk
 
-from command_quiver.db.queries import Section
+from command_quiver.db.models import Section
 from command_quiver.ui.library_actions import SECTION_ICON_BY_TYPE
 
 

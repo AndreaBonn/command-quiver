@@ -5,7 +5,7 @@ import json
 EXPORT_FORMAT = "command-quiver-export"
 EXPORT_VERSION = 1
 _REQUIRED_FIELDS = ("name", "content")
-# Stessa sezione di fallback di queries.import_entries
+# Stessa sezione di fallback di db.entry_import.normalize_import_item
 DEFAULT_SECTION_NAME = "Generale"
 
 

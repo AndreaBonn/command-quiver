@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, patch
 
 from command_quiver.core.settings import Settings
 from command_quiver.db.database import Database
-from command_quiver.db.queries import EntryCreate, EntryRepository, EntryUpdate
+from command_quiver.db.entry_repository import EntryRepository
+from command_quiver.db.models import EntryCreate, EntryUpdate
 from tests.conftest import requires_display
 
 
@@ -178,7 +179,7 @@ class TestSidebarPanel:
         gtk_init,
         db_for_ui: Database,
     ) -> None:
-        from command_quiver.db.queries import SectionRepository
+        from command_quiver.db.section_repository import SectionRepository
 
         sidebar = self._create_sidebar(db_for_ui)
         sidebar._section_panel._on_section_created("Docker")
@@ -203,7 +204,7 @@ class TestSidebarPanel:
         gtk_init,
         db_for_ui: Database,
     ) -> None:
-        from command_quiver.db.queries import SectionRepository
+        from command_quiver.db.section_repository import SectionRepository
 
         sidebar = self._create_sidebar(db_for_ui)
         sidebar._section_panel._on_section_renamed(section_id=1, new_name="Comandi")

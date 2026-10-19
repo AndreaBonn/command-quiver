@@ -9,13 +9,9 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk
 
 from command_quiver.core.i18n import t
-from command_quiver.db.queries import (
-    DuplicateSectionError,
-    Entry,
-    EntryRepository,
-    Section,
-    SectionRepository,
-)
+from command_quiver.db.entry_repository import EntryRepository
+from command_quiver.db.models import DuplicateSectionError, Entry, Section
+from command_quiver.db.section_repository import SectionRepository
 from command_quiver.ui.section_manager import (
     SectionCreateDialog,
     SectionRenameDialog,

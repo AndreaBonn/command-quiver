@@ -12,7 +12,10 @@ from gi.repository import Gio, GLib, Gtk
 from command_quiver.core.i18n import get_language, t
 from command_quiver.core.library_io import InvalidExportError, parse_import, serialize_export
 from command_quiver.core.samples import sample_entries
-from command_quiver.db.queries import EntryCreate, EntryRepository, Section, SectionRepository
+from command_quiver.db.entry_import import import_entries
+from command_quiver.db.entry_repository import EntryRepository
+from command_quiver.db.models import EntryCreate, Section
+from command_quiver.db.section_repository import SectionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +108,7 @@ def import_library(
             logger.warning("Import rifiutato: %s", path, exc_info=True)
             on_done(t("toast.import_failed"), False)
             return
-        count = entry_repo.import_entries(entries, section_repo=section_repo)
+        count = import_entries(data=entries, entry_repo=entry_repo, section_repo=section_repo)
         on_done(t("toast.imported", count=count), count > 0)
 
     dialog.open(window, None, on_chosen)

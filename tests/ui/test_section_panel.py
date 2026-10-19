@@ -3,10 +3,8 @@
 from unittest.mock import MagicMock
 
 from command_quiver.db.database import Database
-from command_quiver.db.queries import (
-    EntryRepository,
-    SectionRepository,
-)
+from command_quiver.db.entry_repository import EntryRepository
+from command_quiver.db.section_repository import SectionRepository
 from tests.conftest import requires_display
 
 

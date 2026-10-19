@@ -11,13 +11,9 @@ from gi.repository import Gtk
 from command_quiver.core.i18n import t
 from command_quiver.core.ordering import reorder_positions
 from command_quiver.core.presentation import collect_tags
-from command_quiver.db.queries import (
-    Entry,
-    EntryCreate,
-    EntryRepository,
-    EntryUpdate,
-    SectionRepository,
-)
+from command_quiver.db.entry_repository import EntryRepository
+from command_quiver.db.models import Entry, EntryCreate, EntryUpdate
+from command_quiver.db.section_repository import SectionRepository
 from command_quiver.ui import library_actions
 from command_quiver.ui.entry_editor import EntryEditorDialog
 from command_quiver.ui.pending_delete import UNDO_WINDOW_MS, PendingDeletion

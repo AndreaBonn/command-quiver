@@ -119,7 +119,8 @@ def test_count_pushed_nothing_changed() -> None:
 
 
 def test_first_sync_reports_all_local_entries_pushed(sync_engine: SyncEngine) -> None:
-    from command_quiver.db.queries import EntryCreate, EntryRepository
+    from command_quiver.db.entry_repository import EntryRepository
+    from command_quiver.db.models import EntryCreate
 
     repo = EntryRepository(sync_engine._db.connection)
     repo.create(EntryCreate(name="a", content="a", section_id=1))

@@ -13,7 +13,7 @@ from command_quiver.core.clipboard import copy_to_clipboard
 from command_quiver.core.executor import TerminalNotFoundError, execute_in_terminal
 from command_quiver.core.i18n import t
 from command_quiver.core.presentation import content_preview, split_tags
-from command_quiver.db.queries import Entry
+from command_quiver.db.models import Entry
 from command_quiver.ui.row_dnd import build_drag_handle, install_drop_target
 
 logger = logging.getLogger(__name__)

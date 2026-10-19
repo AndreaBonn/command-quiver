@@ -8,7 +8,7 @@ import pytest
 from command_quiver.core import i18n
 from command_quiver.core import settings as settings_module
 from command_quiver.core.settings import Settings, load_settings
-from command_quiver.db.queries import Entry
+from command_quiver.db.models import Entry
 from tests.conftest import requires_display
 
 _EXECUTE = "command_quiver.ui.entry_list.execute_in_terminal"

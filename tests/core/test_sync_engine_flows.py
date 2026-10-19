@@ -10,7 +10,10 @@ from command_quiver.core.github_client import FileContent
 from command_quiver.core.settings import Settings
 from command_quiver.core.sync_engine import SyncEngine
 from command_quiver.db.database import Database
-from command_quiver.db.queries import EntryCreate, EntryRepository, SectionRepository
+from command_quiver.db.entry_repository import EntryRepository
+from command_quiver.db.models import EntryCreate
+from command_quiver.db.section_repository import SectionRepository
+from command_quiver.db.sync_repository import SyncRepository
 
 # Timestamp nel passato recente: ordine certo rispetto ad "adesso" e dentro i 90 giorni
 # oltre i quali il sync elimina le tombstones
@@ -56,6 +59,7 @@ class Device:
         self.engine._create_client = lambda: remote
         self.entries = EntryRepository(self.db.connection)
         self.sections = SectionRepository(self.db.connection)
+        self.sync_repo = SyncRepository(connection=self.db.connection)
 
     def add_entry(self, name: str) -> str:
         """Crea una voce nella sezione di default e ne restituisce l'uuid."""
@@ -106,7 +110,7 @@ def test_sync_entry_deleted_locally_is_not_restored_from_remote(
     """Regressione B7: una voce cancellata dopo l'ultimo sync non risorge dal remoto."""
     entry_uuid = device.add_entry("da cancellare")
     device.engine.sync()
-    entry_id = device.entries.get_by_uuid(entry_uuid).id
+    entry_id = device.sync_repo.get_entry_by_uuid(entry_uuid).id
     device.entries.delete(entry_id)
 
     result = device.engine.sync()
@@ -237,7 +241,7 @@ def test_sync_remote_tombstone_on_default_section_keeps_it_everywhere(
 
     device.engine.sync()
 
-    assert device.sections.get_by_uuid(default_uuid) is not None
+    assert device.sync_repo.get_section_by_uuid(default_uuid) is not None
     assert default_uuid not in _local_tombstone_uuids(device)
     assert default_uuid in _remote_section_uuids(remote)
 
@@ -255,7 +259,7 @@ def test_sync_remote_tombstone_on_other_section_deletes_it_everywhere(
 
     device.engine.sync()
 
-    assert device.sections.get_by_uuid(section.uuid) is None
+    assert device.sync_repo.get_section_by_uuid(section.uuid) is None
     assert section.uuid in _local_tombstone_uuids(device)
     assert section.uuid not in _remote_section_uuids(remote)
 
@@ -309,7 +313,7 @@ def test_sync_entries_of_both_devices_meet_in_same_section(
 
     assert device.entry_uuids() == {uuid_a, uuid_b}
     assert other_device.entry_uuids() == {uuid_a, uuid_b}
-    section_a = device.entries.get_by_uuid(uuid_b).section_id
+    section_a = device.sync_repo.get_entry_by_uuid(uuid_b).section_id
     assert section_a == device.sections.get_default_section_id()
 
 
@@ -338,8 +342,8 @@ def test_sync_remote_rename_onto_existing_name_is_skipped(
     result = device.engine.sync()
 
     assert result.success is True
-    assert device.sections.get_by_uuid(other.uuid).name == "Altro"
-    assert device.sections.get_by_uuid(work.uuid).name == "Lavoro"
+    assert device.sync_repo.get_section_by_uuid(other.uuid).name == "Altro"
+    assert device.sync_repo.get_section_by_uuid(work.uuid).name == "Lavoro"
 
 
 def test_sync_remote_rename_onto_free_name_is_applied(device: Device, remote: FakeRemote) -> None:
@@ -352,7 +356,7 @@ def test_sync_remote_rename_onto_free_name_is_applied(device: Device, remote: Fa
 
     device.engine.sync()
 
-    assert device.sections.get_by_uuid(other.uuid).name == "Rinominata"
+    assert device.sync_repo.get_section_by_uuid(other.uuid).name == "Rinominata"
 
 
 def test_sync_new_remote_section_named_like_synced_local_one_is_skipped(
@@ -367,8 +371,8 @@ def test_sync_new_remote_section_named_like_synced_local_one_is_skipped(
     result = device.engine.sync()
 
     assert result.success is True
-    assert device.sections.get_by_uuid("s-new") is None
-    assert device.sections.get_by_uuid(work.uuid) is not None
+    assert device.sync_repo.get_section_by_uuid("s-new") is None
+    assert device.sync_repo.get_section_by_uuid(work.uuid) is not None
 
 
 def test_sync_remote_entry_with_unknown_section_lands_in_default(
@@ -382,7 +386,10 @@ def test_sync_remote_entry_with_unknown_section_lands_in_default(
 
     device.engine.sync()
 
-    assert device.entries.get_by_uuid("e-1").section_id == device.sections.get_default_section_id()
+    assert (
+        device.sync_repo.get_entry_by_uuid("e-1").section_id
+        == device.sections.get_default_section_id()
+    )
 
 
 def _remote_edit_of(remote: FakeRemote, entry_uuid: str, content: str, updated_at: str) -> None:
@@ -412,7 +419,7 @@ def test_sync_local_edit_in_sqlite_format_beats_older_remote_iso_edit(
 
     device.engine.sync()
 
-    assert device.entries.get_by_uuid(entry_uuid).content == "echo"
+    assert device.sync_repo.get_entry_by_uuid(entry_uuid).content == "echo"
     assert _remote_content(remote, entry_uuid) == "echo"
 
 
@@ -427,7 +434,7 @@ def test_sync_newer_remote_iso_edit_beats_local_sqlite_format_edit(
 
     device.engine.sync()
 
-    assert device.entries.get_by_uuid(entry_uuid).content == "remoto"
+    assert device.sync_repo.get_entry_by_uuid(entry_uuid).content == "remoto"
     assert _remote_content(remote, entry_uuid) == "remoto"
 
 
@@ -452,7 +459,10 @@ def test_sync_remote_entry_in_section_deleted_by_same_pull_lands_in_default(
     result = device.engine.sync()
 
     assert result.success is True
-    assert device.entries.get_by_uuid("e-9").section_id == device.sections.get_default_section_id()
+    assert (
+        device.sync_repo.get_entry_by_uuid("e-9").section_id
+        == device.sections.get_default_section_id()
+    )
 
 
 def test_sync_new_remote_section_created_with_remote_uuid(
@@ -464,7 +474,7 @@ def test_sync_new_remote_section_created_with_remote_uuid(
     result = device.engine.sync()
 
     assert result.sections_pulled == 1
-    assert device.sections.get_by_uuid("new").name == "New"
+    assert device.sync_repo.get_section_by_uuid("new").name == "New"
 
 
 def test_sync_local_and_remote_equal_timestamp_keeps_local_version(
@@ -478,7 +488,7 @@ def test_sync_local_and_remote_equal_timestamp_keeps_local_version(
     result = device.engine.sync()
 
     assert result.entries_pulled == 0
-    assert device.entries.get_by_uuid(uid).content == "echo"
+    assert device.sync_repo.get_entry_by_uuid(uid).content == "echo"
     assert _remote_content(remote, uid) == "echo"
 
 
@@ -498,5 +508,5 @@ def test_sync_section_rename_before_creation_frees_name_in_remote_order(
     result = device.engine.sync()
 
     assert result.sections_pulled == 2
-    assert device.sections.get_by_uuid(section.uuid).name == "Renamed"
-    assert device.sections.get_by_uuid("new").name == "Old"
+    assert device.sync_repo.get_section_by_uuid(section.uuid).name == "Renamed"
+    assert device.sync_repo.get_section_by_uuid("new").name == "Old"

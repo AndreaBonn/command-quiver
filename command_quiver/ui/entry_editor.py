@@ -11,7 +11,7 @@ from gi.repository import Gdk, Gtk
 from command_quiver.core.clipboard import copy_to_clipboard
 from command_quiver.core.i18n import t
 from command_quiver.core.presentation import join_tags, name_from_content, split_tags
-from command_quiver.db.queries import Entry, EntryCreate, EntryUpdate, Section
+from command_quiver.db.models import Entry, EntryCreate, EntryUpdate, Section
 from command_quiver.ui.editor_widgets import (
     ContentField,
     SectionPicker,

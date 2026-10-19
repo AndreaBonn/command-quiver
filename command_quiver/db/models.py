@@ -66,3 +66,17 @@ class EntryUpdate:
     section_id: int | None = None
     type: str = "prompt"
     tags: str = ""
+
+
+@dataclass(frozen=True)
+class SyncedEntry:
+    """Campi remoti di una voce, con sezione già risolta all'id locale."""
+
+    name: str
+    content: str
+    entry_uuid: str
+    section_id: int | None
+    entry_type: str = "prompt"
+    tags: str = ""
+    created_at: str = ""
+    updated_at: str = ""

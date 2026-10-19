@@ -9,7 +9,8 @@ from command_quiver.core.i18n import init as i18n_init
 from command_quiver.core.settings import Settings
 from command_quiver.core.sync_engine import SyncResult
 from command_quiver.db.database import Database
-from command_quiver.db.queries import EntryCreate, EntryRepository
+from command_quiver.db.entry_repository import EntryRepository
+from command_quiver.db.models import EntryCreate
 from tests.conftest import requires_display
 
 
@@ -176,7 +177,7 @@ class TestSyncStatus:
 @requires_display
 class TestSectionsMenu:
     def test_default_section_menu_has_no_delete(self, gtk_init, db_for_ui) -> None:
-        from command_quiver.db.queries import SectionRepository
+        from command_quiver.db.section_repository import SectionRepository
 
         sidebar = _sidebar(db_for_ui)
         default = next(s for s in SectionRepository(db_for_ui.connection).get_all() if s.is_default)
