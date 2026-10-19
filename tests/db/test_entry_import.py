@@ -83,6 +83,40 @@ def test_import_entries_same_new_section_is_created_once(
     assert len(sections.get_all()) == count_before + 1
 
 
+def test_import_entries_section_differing_only_in_case_reuses_existing(
+    entries: EntryRepository, sections: SectionRepository
+) -> None:
+    """Le sezioni non distinguono maiuscole: "ansible" finisce nella "Ansible" esistente."""
+    existing = sections.create(name="Ansible")
+    count_before = len(sections.get_all())
+    data = [
+        {"name": "one", "content": "text", "section_name": "ansible"},
+        {"name": "two", "content": "text", "section_name": "ANSIBLE"},
+    ]
+
+    imported = import_entries(entry_repo=entries, data=data, section_repo=sections)
+
+    assert imported == 2
+    assert {row.section_id for row in entries.get_all()} == {existing.id}
+    assert len(sections.get_all()) == count_before
+
+
+def test_import_entries_new_sections_differing_only_in_case_are_merged(
+    entries: EntryRepository, sections: SectionRepository
+) -> None:
+    count_before = len(sections.get_all())
+    data = [
+        {"name": "one", "content": "text", "section_name": "Docker"},
+        {"name": "two", "content": "text", "section_name": "docker"},
+    ]
+
+    imported = import_entries(entry_repo=entries, data=data, section_repo=sections)
+
+    assert imported == 2
+    assert [s.name for s in sections.get_all()].count("Docker") == 1
+    assert len(sections.get_all()) == count_before + 1
+
+
 def test_import_entries_over_limit_imports_only_prefix(
     entries: EntryRepository,
     sections: SectionRepository,

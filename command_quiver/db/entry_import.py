@@ -50,15 +50,18 @@ def import_entries(
         )
         data = data[:MAX_IMPORT_ENTRIES]
     imported = 0
-    section_map = {s.name: s.id for s in section_repo.get_all()}
+    # Chiave casefold come UNICODE_LOWER nel DB: "git" e "Git" sono la stessa sezione,
+    # e con la chiave esatta create() sollevava DuplicateSectionError a import avviato
+    section_map = {s.name.casefold(): s.id for s in section_repo.get_all()}
     for item in data:
         normalized = normalize_import_item(item=item)
         if normalized is None:
             continue
         section_name = normalized.pop("section_name")
-        if section_name not in section_map:
-            section_map[section_name] = section_repo.create(name=section_name).id
-        entry_repo.create(data=EntryCreate(**normalized, section_id=section_map[section_name]))
+        key = section_name.casefold()
+        if key not in section_map:
+            section_map[key] = section_repo.create(name=section_name).id
+        entry_repo.create(data=EntryCreate(**normalized, section_id=section_map[key]))
         imported += 1
     logger.info("Importate %d voci su %d", imported, len(data))
     return imported
