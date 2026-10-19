@@ -1,7 +1,7 @@
 """Scenari di sync end-to-end: database reale su tmp, remoto GitHub finto in memoria."""
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -11,9 +11,10 @@ from command_quiver.core.settings import Settings
 from command_quiver.core.sync_engine import SyncEngine
 from command_quiver.db.database import Database
 from command_quiver.db.entry_repository import EntryRepository
-from command_quiver.db.models import EntryCreate
+from command_quiver.db.models import EntryCreate, EntryUpdate
 from command_quiver.db.section_repository import SectionRepository
 from command_quiver.db.sync_repository import SyncRepository
+from command_quiver.db.tombstone_repository import TombstoneRepository
 
 # Timestamp nel passato recente: ordine certo rispetto ad "adesso" e dentro i 90 giorni
 # oltre i quali il sync elimina le tombstones
@@ -510,3 +511,119 @@ def test_sync_section_rename_before_creation_frees_name_in_remote_order(
     assert result.sections_pulled == 2
     assert device.sync_repo.get_section_by_uuid(section.uuid).name == "Renamed"
     assert device.sync_repo.get_section_by_uuid("new").name == "Old"
+
+
+@pytest.mark.parametrize("existing", [False, True], ids=["new", "updated"])
+def test_sync_pulled_entry_preserves_remote_fields(
+    device: Device, remote: FakeRemote, existing: bool
+) -> None:
+    entry_uuid = device.add_entry(name="locale") if existing else "remote-new"
+    if existing:
+        device.set_entry_updated_at(entry_uuid=entry_uuid, updated_at=_PAST)
+    device.engine.sync()
+    entry = _remote_entry(entry_uuid=entry_uuid, updated_at=_PAST_LATER)
+    entry.update(name="Nome remoto", content="printf remote", tags="deploy, git")
+    remote.edit(entries=[entry])
+
+    device.engine.sync()
+
+    local = device.sync_repo.get_entry_by_uuid(entry_uuid=entry_uuid)
+    assert (local.name, local.content, local.type, local.tags, local.updated_at) == (
+        "Nome remoto",
+        "printf remote",
+        "shell",
+        "deploy, git",
+        _PAST_LATER,
+    )
+
+
+def test_sync_pulled_entry_uses_remote_section_and_new_section_icon(
+    device: Device, remote: FakeRemote
+) -> None:
+    device.engine.sync()
+    section = _remote_section(section_uuid="remote-section", name="Remota", updated_at=_PAST)
+    section["icon"] = "utilities-terminal"
+    entry = _remote_entry(entry_uuid="remote-entry", updated_at=_PAST_LATER)
+    entry["section_uuid"] = "remote-section"
+    remote.edit(sections=[*remote.state["sections"], section], entries=[entry])
+
+    device.engine.sync()
+
+    local_section = device.sync_repo.get_section_by_uuid(section_uuid="remote-section")
+    local_entry = device.sync_repo.get_entry_by_uuid(entry_uuid="remote-entry")
+    assert (local_entry.section_id, local_section.name, local_section.icon) == (
+        local_section.id,
+        "Remota",
+        "utilities-terminal",
+    )
+
+
+def test_sync_cleans_91_day_tombstone_and_keeps_2_day_tombstone(
+    device: Device,
+) -> None:
+    tombstones = TombstoneRepository(connection=device.db.connection)
+    now = datetime.now(timezone.utc)
+    tombstones.add(
+        tombstone_uuid="expired",
+        entity_type="entry",
+        deleted_at=(now - timedelta(days=91)).isoformat(),
+    )
+    tombstones.add(
+        tombstone_uuid="recent",
+        entity_type="entry",
+        deleted_at=(now - timedelta(days=2)).isoformat(),
+    )
+
+    device.engine.sync()
+
+    assert {item["uuid"] for item in tombstones.get_all()} == {"recent"}
+
+
+def test_sync_remote_icon_only_section_update_is_applied(
+    device: Device, remote: FakeRemote
+) -> None:
+    section = device.sections.create(name="Lavoro", icon="folder")
+    _set_section_updated_at(device=device, section_uuid=section.uuid, updated_at=_PAST)
+    device.engine.sync()
+    sections = remote.state["sections"]
+    for item in sections:
+        if item["uuid"] == section.uuid:
+            item.update(icon="starred", updated_at=_PAST_LATER)
+    remote.edit(sections=sections)
+
+    device.engine.sync()
+
+    local = device.sync_repo.get_section_by_uuid(section_uuid=section.uuid)
+    assert (local.name, local.icon) == ("Lavoro", "starred")
+
+
+def test_sync_reports_one_entry_pulled_then_one_local_edit_pushed(
+    device: Device, remote: FakeRemote
+) -> None:
+    device.engine.sync()
+    remote.edit(entries=[_remote_entry(entry_uuid="remote-entry", updated_at=_PAST)])
+    pulled = device.engine.sync()
+    entry = device.sync_repo.get_entry_by_uuid(entry_uuid="remote-entry")
+    device.entries.update(
+        data=EntryUpdate(
+            id=entry.id, name="Modificata", content="echo local", section_id=entry.section_id
+        )
+    )
+
+    pushed = device.engine.sync()
+
+    assert (pulled.entries_pulled, pushed.entries_pushed) == (1, 1)
+
+
+def test_sync_success_records_parseable_last_sync(device: Device, remote: FakeRemote) -> None:
+    settings = Settings()
+    engine = SyncEngine(db=device.db, settings=settings)
+    engine._create_client = lambda: remote
+    before = datetime.now()
+
+    result = engine.sync()
+
+    assert (
+        result.success
+        and before <= datetime.fromisoformat(settings.sync.last_sync) <= datetime.now()
+    )

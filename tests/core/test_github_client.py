@@ -233,7 +233,7 @@ def test_put_file_sends_a_commit_message(monkeypatch: pytest.MonkeyPatch) -> Non
 
     client.put_file(path="vault.json", content="{}")
 
-    assert json.loads(requests[0].data)["message"]
+    assert json.loads(requests[0].data)["message"] == "sync: update vault"
 
 
 def test_put_file_requests_the_file_contents_url_with_put_and_json(
@@ -344,3 +344,16 @@ def test_get_file_truncated_body_raises_network_error(monkeypatch: pytest.Monkey
         client.get_file(path="vault.json")
 
     assert raised.value.status_code == 0
+
+
+def test_check_connection_requests_repository_url_with_get(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests = _fake_urlopen(monkeypatch, {"id": 1})
+    client = GitHubClient(token="tok", owner="mrossi", repo="vault")
+
+    client.check_connection()
+
+    assert [(request.full_url, request.get_method()) for request in requests] == [
+        ("https://api.github.com/repos/mrossi/vault", "GET")
+    ]
