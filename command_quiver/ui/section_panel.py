@@ -145,7 +145,6 @@ class SectionPanelWidget(Gtk.Box):
         self._section_list.append(
             SectionRow(
                 label=t("sidebar.all_entries"),
-                section_id=None,
                 count=all_count,
                 icon_name=ALL_ENTRIES_ICON if theme_has_icon(ALL_ENTRIES_ICON) else FALLBACK_ICON,
             )
@@ -158,7 +157,6 @@ class SectionPanelWidget(Gtk.Box):
         """Crea la riga di una sezione con menu ⋯ e tasto destro."""
         row = SectionRow(
             label=section.name,
-            section_id=section.id,
             section=section,
             count=count,
             icon_name=resolve_section_icon(section.icon, theme_has_icon),

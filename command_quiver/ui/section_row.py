@@ -34,19 +34,20 @@ def theme_has_icon(name: str) -> bool:
 
 
 class SectionRow(Gtk.Box):
-    """Riga nella lista sezioni: icona, nome, conteggio e (se gestibile) menu azioni."""
+    """Riga nella lista sezioni: icona, nome, conteggio e (se gestibile) menu azioni.
+
+    Senza ``section`` è la riga "Tutti", che non filtra per sezione.
+    """
 
     def __init__(
         self,
         label: str,
-        section_id: int | None,
         section: Section | None = None,
         count: int = 0,
         icon_name: str = FALLBACK_ICON,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.add_css_class("section-row")
-        self.section_id = section_id
         self.section = section
         self.menu_button: Gtk.MenuButton | None = None
 
@@ -57,6 +58,11 @@ class SectionRow(Gtk.Box):
         self.count_label = Gtk.Label(label=str(count), valign=Gtk.Align.CENTER)
         self.count_label.add_css_class("section-count")
         self.append(self.count_label)
+
+    @property
+    def section_id(self) -> int | None:
+        """Id della sezione mostrata; None per "Tutti"."""
+        return self.section.id if self.section else None
 
     def add_menu(self, popover: Gtk.Popover) -> None:
         """Aggiunge il pulsante ⋯ che apre il menu della sezione."""

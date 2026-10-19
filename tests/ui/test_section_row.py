@@ -51,3 +51,20 @@ class TestBuildSectionMenu:
 
         assert "Elimina" not in labels
         assert t("sidebar.default_not_deletable") in labels
+
+
+@requires_display
+class TestSectionRowIdentity:
+    def test_section_row_id_is_the_id_of_its_section(self, gtk_init) -> None:
+        from command_quiver.ui.section_row import SectionRow
+
+        row = SectionRow(label="Docker", section=Section(id=7, name="Docker"), count=2)
+
+        assert (row.section_id, row.section.name) == (7, "Docker")
+
+    def test_all_entries_row_has_no_section_id(self, gtk_init) -> None:
+        from command_quiver.ui.section_row import SectionRow
+
+        row = SectionRow(label="Tutti", count=5)
+
+        assert (row.section_id, row.section) == (None, None)
