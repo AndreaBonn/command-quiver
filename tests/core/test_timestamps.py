@@ -1,5 +1,6 @@
 """Test della normalizzazione dei timestamp salvati in formati storici diversi."""
 
+import logging
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -63,3 +64,22 @@ def test_utc_now_iso_is_current_utc_instant_with_offset() -> None:
     moment = datetime.fromisoformat(value)
     assert moment.utcoffset() == timedelta(0)
     assert before <= moment <= datetime.now(timezone.utc)
+
+
+def test_parse_timestamp_unparsable_value_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    """Un timestamp corrotto perde ogni confronto LWW: almeno deve restare una traccia."""
+    with caplog.at_level(logging.WARNING, logger="command_quiver.core.timestamps"):
+        parse_timestamp("non è una data")
+
+    assert "non è una data" in caplog.text
+
+
+@pytest.mark.parametrize("value", ["", None], ids=["empty", "none"])
+def test_parse_timestamp_missing_value_is_not_logged(
+    caplog: pytest.LogCaptureFixture, value: str | None
+) -> None:
+    """Positivo appaiato: un timestamp assente è legittimo (record storici), niente avviso."""
+    with caplog.at_level(logging.WARNING, logger="command_quiver.core.timestamps"):
+        parse_timestamp(value)
+
+    assert caplog.records == []

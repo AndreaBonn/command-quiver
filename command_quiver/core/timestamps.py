@@ -7,7 +7,10 @@ Confrontarli come stringhe sbaglia l'ordine: il last-write-wins del sync passa
 quindi sempre da ``parse_timestamp``.
 """
 
+import logging
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 # Più vecchio di qualsiasi data reale: un timestamp mancante perde ogni confronto
 _OLDEST = datetime.min.replace(tzinfo=timezone.utc)
@@ -33,6 +36,8 @@ def parse_timestamp(value: str | None) -> datetime:
     try:
         moment = datetime.fromisoformat(value)
     except ValueError:
+        # Un valore corrotto perde ogni confronto last-write-wins: va lasciata traccia
+        logger.warning("Timestamp non leggibile, trattato come il più vecchio: %r", value)
         return _OLDEST
     if moment.tzinfo is not None:
         return moment.astimezone(timezone.utc)
