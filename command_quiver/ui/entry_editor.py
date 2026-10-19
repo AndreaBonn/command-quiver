@@ -1,7 +1,8 @@
 """Dialog modale per creazione e modifica voci."""
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from enum import Enum, auto
 
 import gi
@@ -92,6 +93,20 @@ def entry_payload(draft: EntryCreate, entry_id: int | None) -> EntryCreate | Ent
     return EntryUpdate(id=entry_id, name=name, tags=draft.tags, **fields)
 
 
+@dataclass(frozen=True)
+class EditorRequest:
+    """Cosa apre l'editor: la voce da modificare (None per una nuova) e il suo contesto.
+
+    ``initial_section_id`` è la sezione aperta nella finestra, usata solo per una
+    voce nuova; ``known_tags`` alimenta i suggerimenti del campo tag.
+    """
+
+    sections: list[Section]
+    entry: Entry | None = None
+    initial_section_id: int | None = None
+    known_tags: Sequence[str] = ()
+
+
 class EntryEditorDialog(Gtk.Window):
     """Dialog per creare o modificare una voce (prompt o comando shell).
 
@@ -104,13 +119,11 @@ class EntryEditorDialog(Gtk.Window):
     def __init__(
         self,
         parent: Gtk.Window,
-        sections: list[Section],
-        entry: Entry | None = None,
+        request: EditorRequest,
         on_save: Callable[[EntryCreate | EntryUpdate], None] | None = None,
         on_delete: Callable[[int], None] | None = None,
-        initial_section_id: int | None = None,
-        known_tags: list[str] | None = None,
     ) -> None:
+        entry = request.entry
         super().__init__(
             title=t("editor.title_edit") if entry else t("editor.title_new"),
             transient_for=parent,
@@ -119,15 +132,15 @@ class EntryEditorDialog(Gtk.Window):
             default_height=600,
         )
         self._entry = entry
-        self._sections = sections
+        self._sections = request.sections
         self._on_save = on_save
         self._on_delete = on_delete
         self._is_edit = entry is not None
-        self._known_tags = known_tags or []
+        self._known_tags = list(request.known_tags)
 
         self._setup_keyboard_shortcuts()
         self._build_ui()
-        self._populate_fields(initial_section_id)
+        self._populate_fields(request.initial_section_id)
 
     def _setup_keyboard_shortcuts(self) -> None:
         controller = Gtk.EventControllerKey()

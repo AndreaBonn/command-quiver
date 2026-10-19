@@ -401,4 +401,4 @@ class TestSidebarPanel:
             mock_dialog.assert_called_once()
             # Verifica che entry viene passato al dialog
             call_kwargs = mock_dialog.call_args[1]
-            assert call_kwargs["entry"] == entry
+            assert call_kwargs["request"].entry == entry

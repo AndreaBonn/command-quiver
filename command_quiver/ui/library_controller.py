@@ -15,7 +15,7 @@ from command_quiver.db.entry_repository import EntryRepository
 from command_quiver.db.models import Entry, EntryCreate, EntryUpdate
 from command_quiver.db.section_repository import SectionRepository
 from command_quiver.ui import library_actions
-from command_quiver.ui.entry_editor import EntryEditorDialog
+from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 from command_quiver.ui.pending_delete import UNDO_WINDOW_MS, PendingDeletion
 from command_quiver.ui.toast import ToastOverlay
 
@@ -47,14 +47,17 @@ class LibraryController:
     def open_editor(self, entry: Entry | None, initial_section_id: int | None) -> None:
         """Editor di una voce (o nuova), con i tag già usati come suggerimenti."""
         all_entries = self._entries.get_all(section_id=None, search="", sort_order="alpha_asc")
-        EntryEditorDialog(
-            parent=self._view.window,
+        request = EditorRequest(
             sections=self._sections.get_all(),
             entry=entry,
-            on_save=self.save,
-            on_delete=self.delete if entry else None,
             initial_section_id=initial_section_id,
             known_tags=collect_tags([e.tags for e in all_entries]),
+        )
+        EntryEditorDialog(
+            parent=self._view.window,
+            request=request,
+            on_save=self.save,
+            on_delete=self.delete if entry else None,
         ).present()
 
     def save(self, data: EntryCreate | EntryUpdate) -> None:

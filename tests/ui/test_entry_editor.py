@@ -40,7 +40,7 @@ class TestEntryEditorValidation:
     def _create_dialog(self, entry=None, on_save=None):
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -48,8 +48,7 @@ class TestEntryEditorValidation:
         parent = Gtk.Window()
         return EntryEditorDialog(
             parent=parent,
-            sections=_make_sections(),
-            entry=entry,
+            request=EditorRequest(sections=_make_sections(), entry=entry),
             on_save=on_save or MagicMock(),
         )
 
@@ -122,7 +121,7 @@ class TestEntryEditorDataCollection:
     def _create_dialog(self, entry=None):
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -130,8 +129,7 @@ class TestEntryEditorDataCollection:
         parent = Gtk.Window()
         return EntryEditorDialog(
             parent=parent,
-            sections=_make_sections(),
-            entry=entry,
+            request=EditorRequest(sections=_make_sections(), entry=entry),
             on_save=MagicMock(),
         )
 
@@ -206,7 +204,7 @@ class TestEntryEditorPopulation:
     def test_populates_name_from_entry(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -215,8 +213,7 @@ class TestEntryEditorPopulation:
         entry = _make_entry()
         dialog = EntryEditorDialog(
             parent=parent,
-            sections=_make_sections(),
-            entry=entry,
+            request=EditorRequest(sections=_make_sections(), entry=entry),
             on_save=MagicMock(),
         )
 
@@ -225,7 +222,7 @@ class TestEntryEditorPopulation:
     def test_populates_content_from_entry(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -234,8 +231,7 @@ class TestEntryEditorPopulation:
         entry = _make_entry()
         dialog = EntryEditorDialog(
             parent=parent,
-            sections=_make_sections(),
-            entry=entry,
+            request=EditorRequest(sections=_make_sections(), entry=entry),
             on_save=MagicMock(),
         )
 
@@ -247,7 +243,7 @@ class TestEntryEditorPopulation:
     def test_populates_shell_type(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -256,8 +252,7 @@ class TestEntryEditorPopulation:
         entry = _make_entry()
         dialog = EntryEditorDialog(
             parent=parent,
-            sections=_make_sections(),
-            entry=entry,
+            request=EditorRequest(sections=_make_sections(), entry=entry),
             on_save=MagicMock(),
         )
         assert dialog._type_selector.entry_type == "shell"
@@ -265,7 +260,7 @@ class TestEntryEditorPopulation:
     def test_populates_tags(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -274,8 +269,7 @@ class TestEntryEditorPopulation:
         entry = _make_entry()
         dialog = EntryEditorDialog(
             parent=parent,
-            sections=_make_sections(),
-            entry=entry,
+            request=EditorRequest(sections=_make_sections(), entry=entry),
             on_save=MagicMock(),
         )
         # E5: i tag esistenti diventano etichette, il campo di testo resta libero
@@ -285,21 +279,18 @@ class TestEntryEditorPopulation:
     def test_title_differs_for_create_and_edit(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
 
         parent = Gtk.Window()
         create_dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=MagicMock(),
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=MagicMock()
         )
         edit_dialog = EntryEditorDialog(
             parent=parent,
-            sections=_make_sections(),
-            entry=_make_entry(),
+            request=EditorRequest(sections=_make_sections(), entry=_make_entry()),
             on_save=MagicMock(),
         )
         assert create_dialog.get_title() == "Nuova voce"
@@ -313,7 +304,7 @@ class TestEntryEditorSave:
     def test_submit_calls_callback_on_valid_input(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -321,9 +312,7 @@ class TestEntryEditorSave:
         parent = Gtk.Window()
         mock_save = MagicMock()
         dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=mock_save,
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=mock_save
         )
         dialog._name_entry.set_text("Test")
         buf = dialog._content_view.get_buffer()
@@ -338,7 +327,7 @@ class TestEntryEditorSave:
     def test_submit_does_not_call_on_invalid(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -346,9 +335,7 @@ class TestEntryEditorSave:
         parent = Gtk.Window()
         mock_save = MagicMock()
         dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=mock_save,
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=mock_save
         )
         # Campi vuoti
         dialog._submit(copy=False)
@@ -357,7 +344,7 @@ class TestEntryEditorSave:
     def test_submit_with_copy_copies_content(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -365,9 +352,7 @@ class TestEntryEditorSave:
         parent = Gtk.Window()
         mock_save = MagicMock()
         dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=mock_save,
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=mock_save
         )
         dialog._name_entry.set_text("Test")
         buf = dialog._content_view.get_buffer()
@@ -386,16 +371,14 @@ class TestEntryEditorKeyboard:
     def test_escape_closes_dialog(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
 
         parent = Gtk.Window()
         dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=MagicMock(),
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=MagicMock()
         )
         with patch.object(dialog, "close") as close:
             key_press(dialog, Gdk.KEY_Escape)
@@ -404,16 +387,14 @@ class TestEntryEditorKeyboard:
     def test_ctrl_s_returns_true(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
 
         parent = Gtk.Window()
         dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=MagicMock(),
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=MagicMock()
         )
         result = dialog._on_key_pressed(None, Gdk.KEY_s, 0, Gdk.ModifierType.CONTROL_MASK)
         assert result is True
@@ -421,16 +402,14 @@ class TestEntryEditorKeyboard:
     def test_ctrl_w_closes_dialog(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
 
         parent = Gtk.Window()
         dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=MagicMock(),
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=MagicMock()
         )
         with patch.object(dialog, "close") as close:
             key_press(dialog, Gdk.KEY_w, Gdk.ModifierType.CONTROL_MASK)
@@ -446,13 +425,15 @@ class TestEntryEditorKeyboard:
     ) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
 
         dialog = EntryEditorDialog(
-            parent=Gtk.Window(), sections=_make_sections(), on_save=MagicMock()
+            parent=Gtk.Window(),
+            request=EditorRequest(sections=_make_sections()),
+            on_save=MagicMock(),
         )
         keyval = getattr(Gdk, f"KEY_{keyval_name}")
 
@@ -464,16 +445,14 @@ class TestEntryEditorKeyboard:
     def test_unhandled_key_returns_false(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
 
         parent = Gtk.Window()
         dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=MagicMock(),
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=MagicMock()
         )
         result = dialog._on_key_pressed(None, Gdk.KEY_a, 0, Gdk.ModifierType(0))
         assert result is False
@@ -481,16 +460,14 @@ class TestEntryEditorKeyboard:
     def test_ctrl_enter_returns_true(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gdk, Gtk
 
         parent = Gtk.Window()
         dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=MagicMock(),
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=MagicMock()
         )
         result = dialog._on_key_pressed(None, Gdk.KEY_Return, 0, Gdk.ModifierType.CONTROL_MASK)
         assert result is True
@@ -503,7 +480,7 @@ class TestEntryEditorDelete:
     def test_submit_with_copy_invalid_does_not_copy(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -511,9 +488,7 @@ class TestEntryEditorDelete:
         parent = Gtk.Window()
         mock_save = MagicMock()
         dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=mock_save,
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=mock_save
         )
         # Campi vuoti
         with patch("command_quiver.ui.entry_editor.copy_to_clipboard") as mock_copy:
@@ -524,7 +499,7 @@ class TestEntryEditorDelete:
     def test_delete_button_present_in_edit_mode(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
@@ -534,8 +509,7 @@ class TestEntryEditorDelete:
         mock_delete = MagicMock()
         dialog = EntryEditorDialog(
             parent=parent,
-            sections=_make_sections(),
-            entry=entry,
+            request=EditorRequest(sections=_make_sections(), entry=entry),
             on_save=MagicMock(),
             on_delete=mock_delete,
         )
@@ -544,16 +518,14 @@ class TestEntryEditorDelete:
     def test_no_delete_button_in_create_mode(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
 
         parent = Gtk.Window()
         dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=MagicMock(),
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=MagicMock()
         )
         labels = [w.get_label() for w in descendants(dialog) if isinstance(w, Gtk.Button)]
         assert (labels.count("Elimina"), labels.count("Annulla")) == (0, 1)
@@ -561,16 +533,14 @@ class TestEntryEditorDelete:
     def test_submit_without_callback_noop(self, gtk_init) -> None:
         import gi
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
 
         parent = Gtk.Window()
         dialog = EntryEditorDialog(
-            parent=parent,
-            sections=_make_sections(),
-            on_save=None,
+            parent=parent, request=EditorRequest(sections=_make_sections()), on_save=None
         )
         dialog._name_entry.set_text("Test")
         buf = dialog._content_view.get_buffer()
@@ -590,9 +560,13 @@ class TestEntryEditorUx:
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
-        return EntryEditorDialog(parent=Gtk.Window(), sections=_make_sections(), **kwargs)
+        inputs = {
+            k: kwargs.pop(k) for k in ("entry", "initial_section_id", "known_tags") if k in kwargs
+        }
+        request = EditorRequest(sections=_make_sections(), **inputs)
+        return EntryEditorDialog(parent=Gtk.Window(), request=request, **kwargs)
 
     def test_new_entry_preselects_open_section(self, gtk_init) -> None:
         dialog = self._dialog(initial_section_id=2)
@@ -646,14 +620,14 @@ class TestEntryEditorSectionFollowsType:
     def _dialog(self):
         from gi.repository import Gtk
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         sections = [
             Section(id=1, name="Comandi shell", icon="utilities-terminal", position=0),
             Section(id=2, name="Prompt AI", icon="format-text-bold", position=1),
             Section(id=3, name="Generale", icon="folder", position=2, is_default=1),
         ]
-        dialog = EntryEditorDialog(parent=Gtk.Window(), sections=sections)
+        dialog = EntryEditorDialog(parent=Gtk.Window(), request=EditorRequest(sections=sections))
         dialog._content_view.get_buffer().set_text("x")
         return dialog
 
@@ -679,11 +653,13 @@ class TestEntryEditorDeleteWithoutConfirmation:
     def test_delete_calls_callback_immediately_and_closes(self, gtk_init) -> None:
         from gi.repository import Gtk
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         on_delete = MagicMock()
         dialog = EntryEditorDialog(
-            parent=Gtk.Window(), sections=_make_sections(), entry=_make_entry(), on_delete=on_delete
+            parent=Gtk.Window(),
+            request=EditorRequest(sections=_make_sections(), entry=_make_entry()),
+            on_delete=on_delete,
         )
         with patch.object(dialog, "close") as mock_close:
             dialog._on_delete_clicked(None)
@@ -696,10 +672,12 @@ class TestEditorKeysAndTypes:
     def _dialog(self, entry=None, on_save=None):
         from gi.repository import Gtk
 
-        from command_quiver.ui.entry_editor import EntryEditorDialog
+        from command_quiver.ui.entry_editor import EditorRequest, EntryEditorDialog
 
         return EntryEditorDialog(
-            parent=Gtk.Window(), sections=_make_sections(), entry=entry, on_save=on_save
+            parent=Gtk.Window(),
+            request=EditorRequest(sections=_make_sections(), entry=entry),
+            on_save=on_save,
         )
 
     def test_save_closes_only_after_valid_content(self, gtk_init) -> None:
