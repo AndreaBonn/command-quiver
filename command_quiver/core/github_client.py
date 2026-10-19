@@ -10,8 +10,8 @@ import logging
 from base64 import b64decode, b64encode
 from dataclasses import dataclass
 from enum import Enum
-from http.client import HTTPResponse
-from urllib.error import HTTPError, URLError
+from http.client import HTTPException, HTTPResponse
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
@@ -71,6 +71,15 @@ def build_request(method: str, url: str, token: str, body: dict | None) -> Reque
     return Request(url, data=data, headers=headers, method=method)
 
 
+def _http_error(err: HTTPError, method: str, path: str) -> GitHubApiError:
+    """Errore applicativo per una risposta HTTP di errore, con il corpo se leggibile."""
+    error_body = ""
+    with contextlib.suppress(OSError):
+        error_body = err.read().decode("utf-8", errors="replace")
+    logger.error("GitHub API errore %d: %s %s - %s", err.code, method, path, error_body)
+    return GitHubApiError(f"GitHub API {err.code}: {error_body}", status_code=err.code)
+
+
 class GitHubClient:
     """Client minimale per GitHub Contents API.
 
@@ -111,23 +120,16 @@ class GitHubClient:
         except HTTPError as err:
             if err.code == 404:
                 return None
-            error_body = ""
-            with contextlib.suppress(OSError):
-                error_body = err.read().decode("utf-8")
-            logger.error(
-                "GitHub API errore %d: %s %s - %s",
-                err.code,
-                method,
-                path,
-                error_body,
-            )
-            raise GitHubApiError(
-                f"GitHub API {err.code}: {error_body}",
-                status_code=err.code,
-            ) from err
-        except URLError as err:
-            logger.error("Errore di rete GitHub: %s", err.reason)
-            raise GitHubApiError(f"Errore di rete: {err.reason}") from err
+            raise _http_error(err=err, method=method, path=path) from err
+        except (OSError, HTTPException) as err:
+            # URLError (connessione), timeout o corpo troncato durante la lettura
+            reason = getattr(err, "reason", err)
+            logger.error("Errore di rete GitHub: %s", reason)
+            raise GitHubApiError(f"Errore di rete: {reason}") from err
+        except ValueError as err:
+            # Corpo non JSON (es. pagina di un proxy) o non UTF-8
+            logger.error("Risposta GitHub non valida: %s %s - %s", method, path, err)
+            raise GitHubApiError(f"Risposta GitHub non valida: {err}") from err
 
     def validate(self) -> bool:
         """Verifica che token e repo siano validi e accessibili.

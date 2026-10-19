@@ -2,6 +2,7 @@
 
 import json
 from base64 import b64encode
+from http.client import IncompleteRead
 from io import BytesIO
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
@@ -292,3 +293,54 @@ def test_build_request_without_body_sends_no_payload() -> None:
     assert request.get_method() == "GET"
     assert request.data is None
     assert request.get_header("Content-type") is None
+
+
+class _TimeoutOnRead:
+    """Risposta che va in timeout durante la lettura del corpo, dopo la connessione."""
+
+    def read(self) -> bytes:
+        raise TimeoutError("timed out")
+
+
+def test_get_file_read_timeout_raises_network_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Un timeout in lettura è un errore di rete, non un'eccezione grezza."""
+    monkeypatch.setattr(
+        "command_quiver.core.github_client.urlopen", lambda req, timeout: _TimeoutOnRead()
+    )
+    client = GitHubClient(token="tok", owner="bonn", repo="vault")
+
+    with pytest.raises(GitHubApiError) as raised:
+        client.get_file(path="vault.json")
+
+    assert raised.value.status_code == 0
+
+
+def test_get_file_non_json_response_raises_api_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Per esempio una pagina HTML di un proxy al posto della risposta dell'API
+    monkeypatch.setattr(
+        "command_quiver.core.github_client.urlopen",
+        lambda req, timeout: BytesIO(b"<html>proxy</html>"),
+    )
+    client = GitHubClient(token="tok", owner="bonn", repo="vault")
+
+    with pytest.raises(GitHubApiError):
+        client.get_file(path="vault.json")
+
+
+class _TruncatedBody:
+    """Risposta il cui corpo arriva troncato: la connessione cade a metà."""
+
+    def read(self) -> bytes:
+        raise IncompleteRead(partial=b'{"conte')
+
+
+def test_get_file_truncated_body_raises_network_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "command_quiver.core.github_client.urlopen", lambda req, timeout: _TruncatedBody()
+    )
+    client = GitHubClient(token="tok", owner="bonn", repo="vault")
+
+    with pytest.raises(GitHubApiError) as raised:
+        client.get_file(path="vault.json")
+
+    assert raised.value.status_code == 0
