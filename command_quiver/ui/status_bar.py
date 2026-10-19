@@ -66,7 +66,7 @@ class SyncStatusBar(Gtk.Box):
         """Ricalcola testo e colore (anche il tempo relativo dell'ultima sync)."""
         self._show_view(
             describe_sync_status(
-                self._settings.sync,
+                sync=self._settings.sync,
                 pending=self._pending,
                 outcome=self._outcome,
                 now=datetime.now(),

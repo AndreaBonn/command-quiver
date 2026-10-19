@@ -45,6 +45,7 @@ def execute_in_terminal(command: str) -> bool:
     # (virgolette o blocco non chiusi) o un "exit" fermano solo quella, e il
     # messaggio con la read che tiene aperto il terminale arriva comunque.
     # Concatenato allo script, un errore di sintassi impediva il parsing di tutto.
+    # A capo e non ";" fra i comandi, come per il "# commento" finale della regressione B15.
     press_enter_msg = t("executor.press_enter")
     wrapped = f"bash -c {shlex.quote(command)}\necho {shlex.quote(press_enter_msg)}\nread"
 
