@@ -257,9 +257,18 @@ def test_put_file_authenticates_with_bearer_token(monkeypatch: pytest.MonkeyPatc
     assert requests[0].get_header("Authorization") == "Bearer secret"
 
 
-def test_put_file_empty_response_raises_api_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    _fake_urlopen(monkeypatch, None)
+def test_put_file_not_found_raises_api_error_with_status_404(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regressione B11: repository inesistente o senza accesso non è un errore di rete.
+
+    GitHub risponde 404 al PUT su un repo sbagliato o privato senza permessi;
+    con status_code 0 l'utente leggeva "Controlla la connessione di rete".
+    """
+    _fake_urlopen(monkeypatch, _http_error(404))
     client = GitHubClient(token="tok", owner="bonn", repo="vault")
 
-    with pytest.raises(GitHubApiError, match="Risposta vuota da PUT file"):
+    with pytest.raises(GitHubApiError) as raised:
         client.put_file(path="vault.json", content="{}")
+
+    assert raised.value.status_code == 404

@@ -215,6 +215,8 @@ class GitHubClient:
             body=body,
         )
         if result is None:
-            raise GitHubApiError("Risposta vuota da PUT file")
+            # _request traduce il 404 in None: su un PUT vuol dire repository
+            # inesistente o privato senza accesso, non un errore di rete
+            raise GitHubApiError(f"Repository o percorso non trovato: {path}", status_code=404)
 
         return result.get("content", {}).get("sha", "")
