@@ -314,6 +314,29 @@ class SyncEngine:
 
         return merged
 
+    def _pull_new_section(self, uid: str, remote_sec: dict, remote_sections: dict) -> int:
+        """Porta in locale una sezione remota nuova. Restituisce 1 se l'ha creata.
+
+        Con un'omonima locale non ancora sincronizzata (le sezioni iniziali di
+        un'altra installazione) ne adotta l'uuid invece di duplicarla (B1). Se
+        l'omonima è già nel remoto è un conflitto di rinomina: si salta.
+        """
+        same_name = self._section_repo.get_by_name(remote_sec["name"])
+        if same_name is None:
+            self._section_repo.create_with_uuid(
+                name=remote_sec["name"],
+                section_uuid=uid,
+                icon=remote_sec.get("icon", "folder"),
+            )
+            return 1
+        if same_name.uuid not in remote_sections:
+            self._section_repo.adopt_uuid(section_id=same_name.id, section_uuid=uid)
+        else:
+            logger.warning(
+                "Sync: sezione remota %s ignorata, nome '%s' già in uso", uid, remote_sec["name"]
+            )
+        return 0
+
     def _apply_remote_changes(
         self,
         local_state: dict,
@@ -329,11 +352,6 @@ class SyncEngine:
         # Mappa sezioni locali per UUID
         local_sections = {s["uuid"]: s for s in local_state.get("sections", [])}
         remote_sections = {s["uuid"]: s for s in remote_state.get("sections", [])}
-
-        # Mappa UUID sezione -> ID locale (per risolvere section_uuid -> section_id)
-        section_uuid_to_id: dict[str, int] = {}
-        for section in self._section_repo.get_all():
-            section_uuid_to_id[section.uuid] = section.id
 
         # Tombstones locali e remote insieme: una cancellazione locale non ancora
         # pushata deve impedire che il pull ricrei la voce (B7)
@@ -375,19 +393,20 @@ class SyncEngine:
                 continue
 
             if uid not in local_sections:
-                # Nuova sezione dal remoto
-                new_section = self._section_repo.create_with_uuid(
-                    name=remote_sec["name"],
-                    section_uuid=uid,
-                    icon=remote_sec.get("icon", "folder"),
-                )
-                section_uuid_to_id[uid] = new_section.id
-                result.sections_pulled += 1
+                result.sections_pulled += self._pull_new_section(uid, remote_sec, remote_sections)
             else:
                 local_sec = local_sections[uid]
                 remote_time = remote_sec.get("updated_at", "")
                 local_time = local_sec.get("updated_at", "")
                 if remote_time > local_time:
+                    taken = self._section_repo.get_by_name(remote_sec["name"])
+                    if taken is not None and taken.uuid != uid:
+                        logger.warning(
+                            "Sync: rinomina remota di %s ignorata, nome '%s' già in uso",
+                            uid,
+                            remote_sec["name"],
+                        )
+                        continue
                     self._section_repo.update_from_sync(
                         section_uuid=uid,
                         name=remote_sec["name"],
@@ -396,19 +415,22 @@ class SyncEngine:
                     )
                     result.sections_pulled += 1
 
-        # Aggiorna mappa dopo creazione sezioni
-        for section in self._section_repo.get_all():
-            section_uuid_to_id[section.uuid] = section.id
+        # Mappa uuid -> id letta solo ora: tombstone e sezioni remote appena applicate
+        # hanno creato, adottato o cancellato sezioni (una cancellata lascerebbe un id orfano)
+        section_uuid_to_id = {s.uuid: s.id for s in self._section_repo.get_all()}
 
         # Sync entries remote
         remote_entries = {e["uuid"]: e for e in remote_state.get("entries", [])}
+        default_section_id = self._section_repo.get_default_section_id()
 
         for uid, remote_entry in remote_entries.items():
             if self._tombstone_wins(remote_entry, all_tombstones.get(uid)):
                 continue
 
             section_uuid = remote_entry.get("section_uuid", "")
-            section_id = section_uuid_to_id.get(section_uuid)
+            # Sezione sconosciuta o cancellata: la voce va in Generale come per la
+            # cancellazione locale, invece di restare senza sezione e invisibile (B10)
+            section_id = section_uuid_to_id.get(section_uuid) or default_section_id
 
             if uid not in local_entries:
                 # Nuova entry dal remoto

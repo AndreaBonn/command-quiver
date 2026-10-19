@@ -1060,3 +1060,33 @@ def test_cleanup_tombstones_repeated_removes_nothing(db: Database) -> None:
     tombstones.cleanup()
 
     assert tombstones.cleanup() == 0
+
+
+# --- Identità delle sezioni fra dispositivi ---
+
+
+def test_get_by_name_ignores_case(sections: SectionRepository) -> None:
+    created = sections.create(name="Lavoro")
+
+    found = sections.get_by_name("LAVORO")
+
+    assert found.id == created.id
+
+
+def test_get_by_name_unknown_returns_none(sections: SectionRepository) -> None:
+    sections.create(name="Lavoro")
+
+    assert sections.get_by_name("Svago") is None
+
+
+def test_adopt_uuid_replaces_identity_and_keeps_entries(
+    sections: SectionRepository, entries: EntryRepository
+) -> None:
+    section = sections.create(name="Lavoro")
+    entry = entries.create(EntryCreate(name="e", content="c", section_id=section.id))
+
+    sections.adopt_uuid(section_id=section.id, section_uuid="remote-uuid")
+
+    assert sections.get_by_uuid("remote-uuid").id == section.id
+    assert sections.get_by_uuid(section.uuid) is None
+    assert entries.get_by_id(entry.id).section_id == section.id

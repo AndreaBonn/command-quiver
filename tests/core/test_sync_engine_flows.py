@@ -258,3 +258,152 @@ def test_sync_remote_tombstone_on_other_section_deletes_it_everywhere(
     assert device.sections.get_by_uuid(section.uuid) is None
     assert section.uuid in _local_tombstone_uuids(device)
     assert section.uuid not in _remote_section_uuids(remote)
+
+
+@pytest.fixture
+def other_device(tmp_path: Path, remote: FakeRemote):
+    """Seconda installazione con il proprio seed: stessi nomi, uuid diversi."""
+    dev = Device(db_path=tmp_path / "b.db", remote=remote)
+    yield dev
+    dev.db.close()
+
+
+def _section_names(device: Device) -> list[str]:
+    return sorted(section.name for section in device.sections.get_all())
+
+
+def test_sync_second_device_with_own_seed_succeeds(device: Device, other_device: Device) -> None:
+    """Regressione B1: il primo sync del secondo dispositivo non fallisce sui nomi del seed."""
+    device.engine.sync()
+
+    result = other_device.engine.sync()
+
+    assert result.success is True
+
+
+def test_sync_second_device_adopts_remote_uuid_for_same_name_sections(
+    device: Device, other_device: Device
+) -> None:
+    """Regressione B1: sezioni omonime diventano la stessa sezione, senza duplicati."""
+    device.engine.sync()
+    other_device.engine.sync()
+
+    device.engine.sync()
+
+    uuids_a = {s.name: s.uuid for s in device.sections.get_all()}
+    uuids_b = {s.name: s.uuid for s in other_device.sections.get_all()}
+    assert uuids_b == uuids_a
+    assert _section_names(device) == ["Comandi shell", "Generale", "Git", "Prompt AI"]
+
+
+def test_sync_entries_of_both_devices_meet_in_same_section(
+    device: Device, other_device: Device
+) -> None:
+    """Le voci dei due dispositivi si ritrovano nella stessa sezione dopo l'adozione."""
+    uuid_a = device.add_entry("da A")
+    device.engine.sync()
+    uuid_b = other_device.add_entry("da B")
+    other_device.engine.sync()
+
+    device.engine.sync()
+
+    assert device.entry_uuids() == {uuid_a, uuid_b}
+    assert other_device.entry_uuids() == {uuid_a, uuid_b}
+    section_a = device.entries.get_by_uuid(uuid_b).section_id
+    assert section_a == device.sections.get_default_section_id()
+
+
+def _remote_section(section_uuid: str, name: str, updated_at: str) -> dict:
+    return {
+        "uuid": section_uuid,
+        "name": name,
+        "icon": "folder",
+        "position": 9,
+        "is_default": 0,
+        "updated_at": updated_at,
+    }
+
+
+def test_sync_remote_rename_onto_existing_name_is_skipped(
+    device: Device, remote: FakeRemote
+) -> None:
+    """Regressione B1: una rinomina remota su un nome già usato non fa fallire il sync."""
+    work = device.sections.create(name="Lavoro")
+    other = device.sections.create(name="Altro")
+    _set_section_updated_at(device, other.uuid, _PAST)
+    device.engine.sync()
+    sections = [s for s in remote.state["sections"] if s["uuid"] != other.uuid]
+    remote.edit(sections=[*sections, _remote_section(other.uuid, "Lavoro", _PAST_LATER)])
+
+    result = device.engine.sync()
+
+    assert result.success is True
+    assert device.sections.get_by_uuid(other.uuid).name == "Altro"
+    assert device.sections.get_by_uuid(work.uuid).name == "Lavoro"
+
+
+def test_sync_remote_rename_onto_free_name_is_applied(device: Device, remote: FakeRemote) -> None:
+    """Positivo appaiato: una rinomina remota su un nome libero arriva in locale."""
+    other = device.sections.create(name="Altro")
+    _set_section_updated_at(device, other.uuid, _PAST)
+    device.engine.sync()
+    sections = [s for s in remote.state["sections"] if s["uuid"] != other.uuid]
+    remote.edit(sections=[*sections, _remote_section(other.uuid, "Rinominata", _PAST_LATER)])
+
+    device.engine.sync()
+
+    assert device.sections.get_by_uuid(other.uuid).name == "Rinominata"
+
+
+def test_sync_new_remote_section_named_like_synced_local_one_is_skipped(
+    device: Device, remote: FakeRemote
+) -> None:
+    """Regressione B1: due sezioni remote con lo stesso nome non fanno fallire il sync."""
+    work = device.sections.create(name="Lavoro")
+    device.engine.sync()
+    sections = remote.state["sections"]
+    remote.edit(sections=[*sections, _remote_section("s-new", "Lavoro", _PAST_LATER)])
+
+    result = device.engine.sync()
+
+    assert result.success is True
+    assert device.sections.get_by_uuid("s-new") is None
+    assert device.sections.get_by_uuid(work.uuid) is not None
+
+
+def test_sync_remote_entry_with_unknown_section_lands_in_default(
+    device: Device, remote: FakeRemote
+) -> None:
+    """Regressione B10: una voce la cui sezione non esiste più finisce in Generale."""
+    device.engine.sync()
+    orphan = _remote_entry("e-1", updated_at=_PAST_LATER)
+    orphan["section_uuid"] = "sezione-cancellata"
+    remote.edit(entries=[orphan])
+
+    device.engine.sync()
+
+    assert device.entries.get_by_uuid("e-1").section_id == device.sections.get_default_section_id()
+
+
+def test_sync_remote_entry_in_section_deleted_by_same_pull_lands_in_default(
+    device: Device, remote: FakeRemote
+) -> None:
+    """Regressione B10: la sezione cancellata nello stesso pull non lascia un id orfano.
+
+    La mappa uuid->id costruita prima delle tombstone conservava l'id della
+    sezione appena cancellata: l'inserimento della voce violava la foreign key.
+    """
+    section = device.sections.create(name="Effimera")
+    _set_section_updated_at(device, section.uuid, _PAST)
+    device.engine.sync()
+    entry = _remote_entry("e-9", updated_at=_PAST_LATER)
+    entry["section_uuid"] = section.uuid
+    remote.edit(
+        entries=[entry],
+        tombstones=[{"uuid": section.uuid, "entity_type": "section", "deleted_at": _PAST_LATER}],
+    )
+
+    result = device.engine.sync()
+
+    assert result.success is True
+    assert device.entries.get_by_uuid("e-9").section_id == device.sections.get_default_section_id()

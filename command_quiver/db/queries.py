@@ -69,6 +69,27 @@ class SectionRepository:
         row = cursor.fetchone()
         return Section(**dict(row)) if row else None
 
+    def get_by_name(self, name: str) -> Section | None:
+        """Restituisce la sezione con questo nome, senza distinguere maiuscole."""
+        cursor = self._conn.execute(
+            "SELECT id, name, icon, position, is_default, created_at, uuid, updated_at "
+            "FROM sections WHERE UNICODE_LOWER(name) = UNICODE_LOWER(?)",
+            (name,),
+        )
+        row = cursor.fetchone()
+        return Section(**dict(row)) if row else None
+
+    def adopt_uuid(self, section_id: int, section_uuid: str) -> None:
+        """Assegna a una sezione locale l'uuid della sua omonima remota.
+
+        Due installazioni creano le sezioni iniziali con uuid propri: al primo
+        sync la sezione locale prende l'identità di quella remota con lo stesso
+        nome. Le voci la referenziano per id, quindi restano al loro posto.
+        """
+        self._conn.execute("UPDATE sections SET uuid = ? WHERE id = ?", (section_uuid, section_id))
+        self._conn.commit()
+        logger.info("Sezione id=%d allineata all'uuid remoto %s", section_id, section_uuid)
+
     def get_default_section_id(self) -> int:
         """Restituisce l'ID della sezione di default (fallback per voci orfane)."""
         cursor = self._conn.execute("SELECT id FROM sections WHERE is_default = 1")
