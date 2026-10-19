@@ -69,6 +69,29 @@ def editor_command(keyval: int, ctrl: bool) -> EditorCommand:
     return EditorCommand.NONE
 
 
+def entry_payload(draft: EntryCreate, entry_id: int | None) -> EntryCreate | EntryUpdate:
+    """Dati da salvare a partire da quanto scritto nel form.
+
+    Parameters
+    ----------
+    draft : EntryCreate
+        Campi del form così come sono; il nome può essere vuoto.
+    entry_id : int | None
+        Voce in modifica, o None per una voce nuova.
+
+    Returns
+    -------
+    EntryCreate | EntryUpdate
+        Il nome, se vuoto, è la prima riga del contenuto; con ``entry_id``
+        è l'aggiornamento di quella voce.
+    """
+    name = draft.name.strip() or name_from_content(draft.content)
+    fields = dict(content=draft.content, section_id=draft.section_id, type=draft.type)
+    if entry_id is None:
+        return EntryCreate(name=name, tags=draft.tags, **fields)
+    return EntryUpdate(id=entry_id, name=name, tags=draft.tags, **fields)
+
+
 class EntryEditorDialog(Gtk.Window):
     """Dialog per creare o modificare una voce (prompt o comando shell).
 
@@ -261,24 +284,14 @@ class EntryEditorDialog(Gtk.Window):
 
     def _collect_data(self) -> EntryCreate | EntryUpdate:
         """Raccoglie i dati dai campi del form."""
-        content = self._content_text()
-        name = self._name_entry.get_text().strip() or name_from_content(content)
-        entry_type = self._type_selector.entry_type
-        section_id = self._section_dropdown.selected_section_id
-        tags = join_tags(self._tag_input.tags)
-
-        if self._is_edit:
-            return EntryUpdate(
-                id=self._entry.id,
-                name=name,
-                content=content,
-                section_id=section_id,
-                type=entry_type,
-                tags=tags,
-            )
-        return EntryCreate(
-            name=name, content=content, section_id=section_id, type=entry_type, tags=tags
+        draft = EntryCreate(
+            name=self._name_entry.get_text(),
+            content=self._content_text(),
+            section_id=self._section_dropdown.selected_section_id,
+            type=self._type_selector.entry_type,
+            tags=join_tags(self._tag_input.tags),
         )
+        return entry_payload(draft, entry_id=self._entry.id if self._is_edit else None)
 
     def _submit(self, copy: bool) -> None:
         """Salva la voce, con ``copy`` copia anche il contenuto negli appunti, e chiude."""
