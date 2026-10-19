@@ -402,6 +402,27 @@ def test_search_word_only_in_content_or_tags_returns_matching_entry(
 
 
 @pytest.mark.parametrize(
+    ("query", "matching", "not_matching"),
+    [
+        ("my_var", "echo $my_var", "echo $myXvar"),
+        ("+%Y", "date +%Y-%m", "date +Y"),
+        ("100%", "progress 100%", "progress 1000"),
+    ],
+    ids=["underscore", "percent", "trailing-percent"],
+)
+def test_search_wildcard_characters_match_literally(
+    entries: EntryRepository, query: str, matching: str, not_matching: str
+) -> None:
+    """Nei comandi shell "_" e "%" sono testo: cercarli non deve fare da jolly."""
+    target = entries.create(data=EntryCreate(name="Target", content=matching))
+    entries.create(data=EntryCreate(name="Other", content=not_matching))
+
+    found = entries.get_all(search=query)
+
+    assert [entry.id for entry in found] == [target.id]
+
+
+@pytest.mark.parametrize(
     ("sort_order", "expected"),
     [
         ("chronological_desc", ["Bravo", "Zulu", "Alpha"]),

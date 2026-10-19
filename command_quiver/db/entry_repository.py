@@ -26,10 +26,11 @@ def _entry_filters(section_id: int | None, search: str) -> tuple[str, list[str |
         conditions.append("e.section_id = ?")
         params.append(section_id)
     if search:
+        # instr e non LIKE: nei comandi "_" e "%" sono testo, con LIKE facevano da jolly
         conditions.append(
-            "(UNICODE_LOWER(e.name) LIKE '%' || UNICODE_LOWER(?) || '%'"
-            " OR UNICODE_LOWER(e.content) LIKE '%' || UNICODE_LOWER(?) || '%'"
-            " OR UNICODE_LOWER(e.tags) LIKE '%' || UNICODE_LOWER(?) || '%')"
+            "(instr(UNICODE_LOWER(e.name), UNICODE_LOWER(?)) > 0"
+            " OR instr(UNICODE_LOWER(e.content), UNICODE_LOWER(?)) > 0"
+            " OR instr(UNICODE_LOWER(e.tags), UNICODE_LOWER(?)) > 0)"
         )
         params.extend([search, search, search])
     return f"WHERE {' AND '.join(conditions)}" if conditions else "", params
