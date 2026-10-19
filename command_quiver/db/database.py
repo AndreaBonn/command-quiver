@@ -43,13 +43,18 @@ CREATE TABLE IF NOT EXISTS sync_tombstones (
 );
 """
 
-# Sezioni di default inserite al primo avvio
+# Sezioni di default inserite al primo avvio, nella lingua dell'interfaccia.
+# "Generale" resta invariata in ogni lingua: il codice la usa come fallback per nome.
+_SEED_NAMES: dict[str, tuple[str, str]] = {
+    "it": ("Comandi shell", "Prompt AI"),
+    "en": ("Shell Commands", "AI Prompts"),
+}
 _SEED_SQL = """
 INSERT OR IGNORE INTO sections (name, icon, position, is_default) VALUES
-    ('Shell Commands', 'utilities-terminal', 0, 0),
-    ('AI Prompts',     'format-text-bold',   1, 0),
-    ('Git',            'vcs-commit',          2, 0),
-    ('Generale',       'folder',              3, 1);
+    (?, 'utilities-terminal', 0, 0),
+    (?, 'format-text-bold',   1, 0),
+    ('Git', 'vcs-commit',     2, 0),
+    ('Generale', 'folder',    3, 1);
 """
 
 # Migrazioni incrementali: (versione, descrizione, SQL)
@@ -116,6 +121,7 @@ class Database:
     def __init__(self, db_path: Path | None = None) -> None:
         self._db_path = db_path or DEFAULT_DB_PATH
         self._connection: sqlite3.Connection | None = None
+        self._seed_language = "en"
 
     @property
     def connection(self) -> sqlite3.Connection:
@@ -164,13 +170,14 @@ class Database:
         connection.create_function("UNICODE_LOWER", 1, str.casefold)
         return connection
 
-    def initialize(self) -> None:
-        """Crea le tabelle e inserisce i dati di default se necessario."""
+    def initialize(self, language: str = "en") -> None:
+        """Crea le tabelle e, solo su database vuoto, le sezioni iniziali nella lingua data."""
+        self._seed_language = language
         try:
             self.connection.executescript(_SCHEMA_SQL)
             self._migrate()
             self._populate_uuids()
-            self.connection.executescript(_SEED_SQL)
+            self._seed_if_empty()
             self.connection.commit()
             self._auto_backup()
             logger.info("Schema database inizializzato")
@@ -273,6 +280,19 @@ class Database:
             return 1
         return 0
 
+    def _seed_if_empty(self) -> None:
+        """Inserisce le sezioni iniziali solo al primo avvio.
+
+        Prima il seed girava a ogni avvio con INSERT OR IGNORE: una sezione
+        iniziale eliminata dall'utente ricompariva al riavvio, e con nomi
+        localizzati avrebbe duplicato le sezioni a ogni cambio di lingua.
+        """
+        count = self.connection.execute("SELECT COUNT(*) FROM sections").fetchone()[0]
+        if count:
+            return
+        names = _SEED_NAMES.get(self._seed_language, _SEED_NAMES["en"])
+        self.connection.execute(_SEED_SQL, names)
+
     def _recreate(self) -> None:
         """Ricrea il database da zero in caso di corruzione."""
         logger.warning("Ricreazione database da zero: %s", self._db_path)
@@ -285,7 +305,7 @@ class Database:
         try:
             self._connect(_allow_recreate=False)
             self.connection.executescript(_SCHEMA_SQL)
-            self.connection.executescript(_SEED_SQL)
+            self._seed_if_empty()
             self.connection.commit()
         except sqlite3.Error:
             logger.critical("Impossibile ricreare il database: %s", self._db_path)

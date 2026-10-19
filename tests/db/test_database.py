@@ -403,3 +403,39 @@ class TestDetectSchemaVersion:
         version = db._detect_schema_version()
         assert version == 0
         db.close()
+
+
+class TestLocalizedSeed:
+    """Le sezioni iniziali seguono la lingua e nascono solo sul DB vuoto."""
+
+    def test_seed_italian_names(self, tmp_path) -> None:
+        db = Database(db_path=tmp_path / "it.db")
+        db.initialize(language="it")
+        names = [r[0] for r in db.connection.execute("SELECT name FROM sections ORDER BY position")]
+        assert names == ["Comandi shell", "Prompt AI", "Git", "Generale"]
+        db.close()
+
+    def test_seed_not_repeated_on_restart_in_other_language(self, tmp_path) -> None:
+        path = tmp_path / "v.db"
+        db = Database(db_path=path)
+        db.initialize(language="en")
+        db.close()
+        db = Database(db_path=path)
+        db.initialize(language="it")
+        count = db.connection.execute("SELECT COUNT(*) FROM sections").fetchone()[0]
+        assert count == 4
+        db.close()
+
+    def test_deleted_seed_section_does_not_come_back(self, tmp_path) -> None:
+        path = tmp_path / "v.db"
+        db = Database(db_path=path)
+        db.initialize()
+        db.connection.execute("DELETE FROM sections WHERE name = 'Git'")
+        db.connection.commit()
+        db.close()
+        db = Database(db_path=path)
+        db.initialize()
+        names = [r[0] for r in db.connection.execute("SELECT name FROM sections")]
+        assert "Git" not in names
+        assert "Generale" in names
+        db.close()
