@@ -1,11 +1,21 @@
 """Test per il modulo impostazioni."""
 
 import json
+import os
+import stat
 from pathlib import Path
 
 import pytest
 
-from command_quiver.core.settings import Settings, load_settings, save_settings
+from command_quiver.core import settings as settings_module
+from command_quiver.core.settings import (
+    Settings,
+    delete_sync_token,
+    load_settings,
+    load_sync_token,
+    save_settings,
+    save_sync_token,
+)
 
 
 @pytest.fixture
@@ -154,3 +164,72 @@ class TestUxSettings:
     def test_skip_run_confirm_invalid_type_reset(self) -> None:
         bad_value: object = "uuid-1"
         assert Settings(skip_run_confirm=bad_value).skip_run_confirm == []
+
+
+@pytest.fixture
+def token_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Reindirizza il file token su tmp_path: mai toccare ~/.config reale."""
+    path = tmp_path / "cfg" / ".sync_token"
+    monkeypatch.setattr(settings_module, "SYNC_TOKEN_PATH", path)
+    return path
+
+
+class TestSyncToken:
+    """Il token GitHub vive in un file dedicato leggibile solo dal proprietario."""
+
+    def test_save_sync_token_then_load_returns_same_token(self, token_path: Path) -> None:
+        save_sync_token("ghp_abc123")
+
+        assert load_sync_token() == "ghp_abc123"
+
+    def test_save_sync_token_restricts_permissions_to_owner(self, token_path: Path) -> None:
+        # umask permissivo: il 600 deve venire dal chmod, non dal caso
+        old_umask = os.umask(0o000)
+        try:
+            save_sync_token("ghp_abc123")
+        finally:
+            os.umask(old_umask)
+
+        assert stat.S_IMODE(os.stat(token_path).st_mode) == 0o600
+
+    def test_save_sync_token_creates_missing_parent_directory(self, token_path: Path) -> None:
+        assert not token_path.parent.exists()
+
+        save_sync_token("ghp_abc123")
+
+        assert token_path.is_file()
+
+    def test_save_sync_token_overwrites_previous_token(self, token_path: Path) -> None:
+        save_sync_token("vecchio")
+        save_sync_token("nuovo")
+
+        assert load_sync_token() == "nuovo"
+
+    def test_load_sync_token_missing_file_returns_empty_string(self, token_path: Path) -> None:
+        assert load_sync_token() == ""
+
+    def test_load_sync_token_strips_surrounding_whitespace(self, token_path: Path) -> None:
+        token_path.parent.mkdir(parents=True)
+        token_path.write_text("  ghp_abc123 \n\n", encoding="utf-8")
+
+        assert load_sync_token() == "ghp_abc123"
+
+    def test_load_sync_token_unreadable_path_returns_empty_string(self, token_path: Path) -> None:
+        # Una directory al posto del file fa fallire la lettura con OSError
+        token_path.mkdir(parents=True)
+
+        assert load_sync_token() == ""
+
+    def test_delete_sync_token_removes_file_and_token_is_gone(self, token_path: Path) -> None:
+        save_sync_token("ghp_abc123")
+        assert token_path.exists()
+
+        delete_sync_token()
+
+        assert not token_path.exists()
+        assert load_sync_token() == ""
+
+    def test_delete_sync_token_without_file_is_noop(self, token_path: Path) -> None:
+        delete_sync_token()
+
+        assert not token_path.exists()
