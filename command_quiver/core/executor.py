@@ -41,13 +41,12 @@ def execute_in_terminal(command: str) -> bool:
     if not shutil.which("gnome-terminal"):
         raise TerminalNotFoundError()
 
-    # Il comando utente viene quotato per evitare che caratteri speciali
-    # nel prompt di "premi INVIO" rompano la concatenazione bash.
-    # Il comando stesso viene eseguito letteralmente (è ciò che l'utente vuole).
+    # Il comando gira letteralmente in una bash annidata: un errore di sintassi
+    # (virgolette o blocco non chiusi) o un "exit" fermano solo quella, e il
+    # messaggio con la read che tiene aperto il terminale arriva comunque.
+    # Concatenato allo script, un errore di sintassi impediva il parsing di tutto.
     press_enter_msg = t("executor.press_enter")
-    # A capo e non ";": un "# commento" in coda al comando si chiude con la riga,
-    # mentre con ";" commentava via anche messaggio e read e il terminale si chiudeva
-    wrapped = f"{command}\necho {shlex.quote(press_enter_msg)}\nread"
+    wrapped = f"bash -c {shlex.quote(command)}\necho {shlex.quote(press_enter_msg)}\nread"
 
     try:
         subprocess.Popen(

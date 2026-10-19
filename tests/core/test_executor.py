@@ -85,8 +85,15 @@ def _run_in_bash(script: str) -> str:
 
 @pytest.mark.parametrize(
     "command",
-    ["echo prima", "echo prima # elenco", "false"],
-    ids=["plain", "trailing-comment", "failing-command"],
+    ["echo prima", "echo prima # elenco", "false", 'echo "aperta', "if true; then", "exit 3"],
+    ids=[
+        "plain",
+        "trailing-comment",
+        "failing-command",
+        "unterminated-quote",
+        "unclosed-block",
+        "explicit-exit",
+    ],
 )
 def test_terminal_script_always_shows_press_enter_after_the_command(command: str) -> None:
     """Regressione B15: il terminale resta aperto anche con un commento finale o un errore.
