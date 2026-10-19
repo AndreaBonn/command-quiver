@@ -119,8 +119,9 @@ class SyncEngine:
         except GitHubApiError as err:
             logger.error("Sync fallito: %s", err)
             return SyncResult(success=False, message=humanize_github_error(err))
-        except (json.JSONDecodeError, KeyError, TypeError) as err:
-            logger.error("Sync fallito (dati corrotti): %s", err)
+        # ValueError copre JSON, base64 e UTF-8 non validi del file remoto
+        except (ValueError, KeyError, TypeError) as err:
+            logger.exception("Sync fallito (dati corrotti): %s", err)
             return SyncResult(success=False, message=f"Dati remoti corrotti: {err}")
         finally:
             connection.close()

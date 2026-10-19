@@ -1,5 +1,6 @@
 """Test del motore di sync: esecuzione cross-thread e messaggi azionabili."""
 
+import logging
 import threading
 from pathlib import Path
 
@@ -210,3 +211,23 @@ def test_sync_failed_push_returns_humanized_error(
     assert "Token GitHub non valido o scaduto" in result.message
     monkeypatch.setattr(sync_engine, "_create_client", lambda: _FakeClient())
     assert sync_engine.sync().success is True
+
+
+def test_sync_remote_not_utf8_returns_data_error_with_traceback(
+    sync_engine: SyncEngine, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """File remoto non decodificabile: è un dato corrotto, non un errore interno del sync."""
+
+    class Client(_FakeClient):
+        def get_file(self, path: str) -> None:
+            # Come in GitHubClient.get_file: b64decode(...).decode("utf-8")
+            b"\xff".decode("utf-8")
+
+    monkeypatch.setattr(sync_engine, "_create_client", lambda: Client())
+
+    with caplog.at_level(logging.ERROR, logger="command_quiver.core.sync_engine"):
+        result = sync_engine.sync()
+
+    assert result.success is False
+    assert result.message.startswith("Dati remoti corrotti:")
+    assert caplog.records[-1].exc_info is not None
