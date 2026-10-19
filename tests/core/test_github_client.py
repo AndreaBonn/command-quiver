@@ -13,6 +13,7 @@ from command_quiver.core.github_client import (
     FileContent,
     GitHubApiError,
     GitHubClient,
+    build_request,
 )
 
 
@@ -272,3 +273,22 @@ def test_put_file_not_found_raises_api_error_with_status_404(
         client.put_file(path="vault.json", content="{}")
 
     assert raised.value.status_code == 404
+
+
+def test_build_request_with_body_sends_json_with_content_type() -> None:
+    request = build_request(
+        method="PUT", url="https://api.github.com/x", token="secret", body={"a": 1}
+    )
+
+    assert request.get_method() == "PUT"
+    assert json.loads(request.data) == {"a": 1}
+    assert request.get_header("Content-type") == "application/json"
+    assert request.get_header("Authorization") == "Bearer secret"
+
+
+def test_build_request_without_body_sends_no_payload() -> None:
+    request = build_request(method="GET", url="https://api.github.com/x", token="secret", body=None)
+
+    assert request.get_method() == "GET"
+    assert request.data is None
+    assert request.get_header("Content-type") is None

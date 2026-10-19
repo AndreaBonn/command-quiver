@@ -55,6 +55,22 @@ class GitHubApiError(Exception):
         super().__init__(message)
 
 
+def build_request(method: str, url: str, token: str, body: dict | None) -> Request:
+    """Costruisce la richiesta autenticata per la GitHub API, senza eseguirla.
+
+    Il corpo, se presente, viaggia come JSON con il relativo Content-Type.
+    """
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "CommandQuiver-Sync/1.0",
+    }
+    data = json.dumps(body).encode("utf-8") if body else None
+    if data:
+        headers["Content-Type"] = "application/json"
+    return Request(url, data=data, headers=headers, method=method)
+
+
 class GitHubClient:
     """Client minimale per GitHub Contents API.
 
@@ -87,18 +103,7 @@ class GitHubClient:
         GitHubApiError
             Per errori HTTP diversi da 404.
         """
-        url = f"{_BASE_URL}{path}"
-        headers = {
-            "Authorization": f"Bearer {self._token}",
-            "Accept": "application/vnd.github.v3+json",
-            "User-Agent": "CommandQuiver-Sync/1.0",
-        }
-
-        data = json.dumps(body).encode("utf-8") if body else None
-        if data:
-            headers["Content-Type"] = "application/json"
-
-        req = Request(url, data=data, headers=headers, method=method)
+        req = build_request(method=method, url=f"{_BASE_URL}{path}", token=self._token, body=body)
 
         try:
             response: HTTPResponse = urlopen(req, timeout=_TIMEOUT_SECONDS)
