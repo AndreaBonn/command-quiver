@@ -549,3 +549,160 @@ def test_language_switch_keeps_current_window_size() -> None:
             app._change_language("en")
         settings = mock_sidebar_cls.call_args.kwargs["settings"]
         assert (settings.window_width, settings.window_height) == (900, 700)
+
+
+class TestStartup:
+    """do_startup: un errore nei servizi mostra l'avviso e chiude, senza lasciare l'app a metà."""
+
+    def _app(self):
+        from command_quiver.app import CommandQuiverApp
+
+        return CommandQuiverApp()
+
+    def test_startup_failure_shows_error_and_quits(self) -> None:
+        with patch("command_quiver.app.Gtk"), patch("command_quiver.app.Gdk"):
+            app = self._app()
+            with (
+                patch.object(app, "_init_services", side_effect=RuntimeError("db corrotto")),
+                patch.object(app, "_show_error_dialog") as show_error,
+                patch.object(app, "quit") as quit_app,
+            ):
+                app.do_startup()
+
+        show_error.assert_called_once()
+        assert "Impossibile avviare" in show_error.call_args.args[0]
+        quit_app.assert_called_once_with()
+
+    def test_startup_success_initializes_services_and_keeps_running(self) -> None:
+        with patch("command_quiver.app.Gtk"), patch("command_quiver.app.Gdk"):
+            app = self._app()
+            with (
+                patch.object(app, "_init_services") as init_services,
+                patch.object(app, "_show_error_dialog") as show_error,
+                patch.object(app, "quit") as quit_app,
+            ):
+                app.do_startup()
+
+        init_services.assert_called_once_with()
+        show_error.assert_not_called()
+        quit_app.assert_not_called()
+
+
+class TestActivate:
+    def test_second_activation_presents_the_same_window(self) -> None:
+        from command_quiver.app import CommandQuiverApp
+
+        app = CommandQuiverApp()
+        sidebar = MagicMock()
+        with (
+            patch.object(app, "_create_sidebar", return_value=sidebar) as create,
+            patch.object(app, "add_window"),
+        ):
+            app.do_activate()
+            app.do_activate()
+
+        create.assert_called_once_with()
+        assert sidebar.present.call_count == 2
+
+    def test_activation_error_is_logged_not_raised(self, caplog) -> None:
+        from command_quiver.app import CommandQuiverApp
+
+        app = CommandQuiverApp()
+        with patch.object(app, "_create_sidebar", side_effect=RuntimeError("boom")):
+            app.do_activate()
+
+        assert "Errore in do_activate" in caplog.text
+        assert app._sidebar is None
+
+
+class TestSyncInThread:
+    """Sync vero in thread: l'esito torna sul main loop e sblocca la sync successiva."""
+
+    def _app_with_engine(self, engine):
+        from command_quiver.app import CommandQuiverApp
+
+        app = CommandQuiverApp()
+        app._sync_engine = engine
+        app._sidebar = MagicMock()
+        return app
+
+    def test_exception_in_sync_is_reported_as_internal_error(self) -> None:
+        from tests.conftest import wait_until
+
+        engine = MagicMock()
+        engine.sync.side_effect = RuntimeError("rete esplosa")
+        app = self._app_with_engine(engine)
+
+        app._run_sync_background()
+
+        app._sidebar.set_sync_pending.assert_called_once_with()
+        assert wait_until(lambda: app._sidebar.update_sync_status.called)
+        result = app._sidebar.update_sync_status.call_args.args[0]
+        assert (result.success, result.message) == (False, "Errore interno sync")
+
+    def test_sync_runs_again_after_a_failed_one(self) -> None:
+        from tests.conftest import wait_until
+
+        engine = MagicMock()
+        engine.sync.side_effect = [
+            RuntimeError("1"),
+            MagicMock(success=True, entries_pulled=0, sections_pulled=0),
+        ]
+        app = self._app_with_engine(engine)
+
+        app._run_sync_background()
+        assert wait_until(lambda: app._sidebar.update_sync_status.call_count == 1)
+        app._run_sync_background()
+
+        assert wait_until(lambda: app._sidebar.update_sync_status.call_count == 2)
+        assert engine.sync.call_count == 2
+
+    def test_second_request_while_running_is_ignored_with_real_thread(self) -> None:
+        import threading
+
+        from tests.conftest import wait_until
+
+        release = threading.Event()
+        engine = MagicMock()
+        engine.sync.side_effect = lambda: (
+            release.wait(timeout=5) and MagicMock(success=True, entries_pulled=0, sections_pulled=0)
+        )
+        app = self._app_with_engine(engine)
+
+        app._run_sync_background()
+        app._run_sync_background()
+        release.set()
+
+        assert wait_until(lambda: app._sidebar.update_sync_status.called)
+        assert engine.sync.call_count == 1
+        app._sidebar.set_sync_pending.assert_called_once_with()
+
+
+def test_final_sync_that_takes_too_long_is_abandoned_with_a_warning(caplog) -> None:
+    from command_quiver.app import CommandQuiverApp
+
+    app = CommandQuiverApp()
+    app._sync_engine = MagicMock()
+    with patch("command_quiver.app.threading.Thread") as thread:
+        thread.return_value.is_alive.return_value = True
+        app.do_shutdown()
+
+    assert "Sync finale timeout" in caplog.text
+
+
+def test_language_change_without_window_still_saves_the_choice() -> None:
+    from command_quiver.app import CommandQuiverApp
+    from command_quiver.core.settings import Settings
+
+    app = CommandQuiverApp()
+    app._settings = Settings(language="it")
+    with (
+        patch("command_quiver.core.i18n.get_language", return_value="it"),
+        patch("command_quiver.core.i18n.init") as i18n_init,
+        patch("command_quiver.app.save_settings") as save,
+    ):
+        app._change_language("en")
+
+    i18n_init.assert_called_once_with("en")
+    assert app._settings.language == "en"
+    save.assert_called_once_with(app._settings)

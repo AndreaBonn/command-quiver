@@ -659,3 +659,62 @@ class TestEntryEditorDeleteWithoutConfirmation:
             dialog._on_delete_clicked(None)
         on_delete.assert_called_once_with(_make_entry().id)
         mock_close.assert_called_once()
+
+
+@requires_display
+class TestEditorKeysAndTypes:
+    def _dialog(self, entry=None, on_save=None):
+        from gi.repository import Gtk
+
+        from command_quiver.ui.entry_editor import EntryEditorDialog
+
+        return EntryEditorDialog(
+            parent=Gtk.Window(), sections=_make_sections(), entry=entry, on_save=on_save
+        )
+
+    def test_ctrl_with_unmapped_key_is_not_consumed(self, gtk_init) -> None:
+        from gi.repository import Gdk
+
+        from tests.conftest import key_press
+
+        dialog = self._dialog()
+        control = Gdk.ModifierType.CONTROL_MASK
+
+        assert key_press(dialog, Gdk.KEY_x, control) is False
+        # Appaiato: con il tasto mappato lo stesso modificatore viene consumato
+        dialog._content_view.get_buffer().set_text("ls")
+        assert key_press(dialog, Gdk.KEY_s, control) is True
+
+    def test_editing_a_prompt_keeps_prompt_type_and_fields(self, gtk_init) -> None:
+        entry = _make_entry()
+        entry.type = "prompt"
+        entry.content = "Riassumi il testo"
+        dialog = self._dialog(entry=entry)
+
+        data = dialog._collect_data()
+
+        assert isinstance(data, EntryUpdate)
+        assert (data.type, data.content, data.id) == ("prompt", "Riassumi il testo", 42)
+
+    def test_ctrl_enter_copies_even_without_save_callback(self, gtk_init) -> None:
+        from gi.repository import Gdk
+
+        from tests.conftest import key_press
+
+        dialog = self._dialog(on_save=None)
+        dialog._content_view.get_buffer().set_text("docker ps")
+
+        with patch("command_quiver.ui.entry_editor.copy_to_clipboard") as copy:
+            assert key_press(dialog, Gdk.KEY_Return, Gdk.ModifierType.CONTROL_MASK) is True
+
+        copy.assert_called_once_with("docker ps")
+
+    def test_unmatched_section_id_leaves_selection_unchanged(self, gtk_init) -> None:
+        from command_quiver.ui.editor_widgets import SectionPicker
+
+        picker = SectionPicker(_make_sections())
+        picker.select_section(2)
+
+        picker.select_section(999)
+
+        assert picker.selected_section_id == 2

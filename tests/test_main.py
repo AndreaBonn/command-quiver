@@ -1,10 +1,26 @@
 """Test per il modulo main: logging, entry point."""
 
 import logging
+import runpy
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from command_quiver.main import setup_logging
+
+
+@pytest.fixture(autouse=True)
+def _restore_root_logger():
+    """setup_logging() modifica handler e livello del root logger: ripristina entrambi."""
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    yield
+    for handler in root.handlers:
+        if handler not in handlers:
+            handler.close()
+    root.handlers[:] = handlers
+    root.setLevel(level)
 
 
 class TestSetupLogging:
@@ -18,18 +34,12 @@ class TestSetupLogging:
             patch("command_quiver.main.LOG_DIR", log_dir),
             patch("command_quiver.main.LOG_FILE", log_file),
         ):
-            # Rimuovi handler esistenti per evitare interferenze
             root = logging.getLogger()
-            original_handlers = root.handlers[:]
             root.handlers.clear()
 
             setup_logging()
 
             assert log_dir.exists()
-
-            # Cleanup: ripristina handler originali
-            root.handlers.clear()
-            root.handlers.extend(original_handlers)
 
     def test_configures_file_handler_at_debug_level(self, tmp_path: Path) -> None:
         log_dir = tmp_path / "logs"
@@ -40,7 +50,6 @@ class TestSetupLogging:
             patch("command_quiver.main.LOG_FILE", log_file),
         ):
             root = logging.getLogger()
-            original_handlers = root.handlers[:]
             root.handlers.clear()
 
             setup_logging()
@@ -53,9 +62,6 @@ class TestSetupLogging:
             # Root logger a DEBUG
             assert root.level == logging.DEBUG
 
-            root.handlers.clear()
-            root.handlers.extend(original_handlers)
-
     def test_log_file_receives_messages(self, tmp_path: Path) -> None:
         log_dir = tmp_path / "logs"
         log_file = log_dir / "app.log"
@@ -65,7 +71,6 @@ class TestSetupLogging:
             patch("command_quiver.main.LOG_FILE", log_file),
         ):
             root = logging.getLogger()
-            original_handlers = root.handlers[:]
             root.handlers.clear()
 
             setup_logging()
@@ -79,9 +84,6 @@ class TestSetupLogging:
 
             content = log_file.read_text()
             assert "Messaggio di test" in content
-
-            root.handlers.clear()
-            root.handlers.extend(original_handlers)
 
 
 class TestMainFunction:
@@ -103,7 +105,6 @@ class TestMainFunction:
             ),
         ):
             root = logging.getLogger()
-            original_handlers = root.handlers[:]
             root.handlers.clear()
 
             from command_quiver.main import main
@@ -112,9 +113,6 @@ class TestMainFunction:
 
             assert exit_code == 0
             mock_app.run.assert_called_once()
-
-            root.handlers.clear()
-            root.handlers.extend(original_handlers)
 
     def test_version_flag_prints_version_and_exits(self) -> None:
         from command_quiver.main import main
@@ -133,3 +131,18 @@ class TestMainFunction:
             exit_code = main()
 
         assert exit_code == 0
+
+
+def test_main_module_version_prints_version_and_exits_successfully(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from command_quiver import APP_NAME, __version__
+    from command_quiver import main as main_module
+
+    monkeypatch.setattr("sys.argv", ["command_quiver", "--version"])
+
+    with pytest.raises(SystemExit) as result:
+        runpy.run_path(path_name=main_module.__file__, run_name="__main__")
+
+    assert result.value.code == 0
+    assert capsys.readouterr().out == f"{APP_NAME} {__version__}\n"

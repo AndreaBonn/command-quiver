@@ -2,37 +2,47 @@
 
 from unittest.mock import MagicMock
 
-from tests.conftest import requires_display
+import pytest
+
+from tests.conftest import button_labelled, requires_display, wait_until
 
 
-@requires_display
-def test_plain_message_waits_for_action_toast_then_shows(gtk_init) -> None:
+@pytest.fixture
+def toast(gtk_init):
     from gi.repository import Gtk
 
     from command_quiver.ui.toast import ToastOverlay
 
-    toast = ToastOverlay(Gtk.Box())
-    toast.show_message("Eliminata: A", action_label="Annulla", on_action=MagicMock())
+    overlay = ToastOverlay(Gtk.Box())
+    yield overlay
+    overlay.cancel()
+
+
+@requires_display
+def test_plain_message_waits_for_action_toast_then_shows(toast) -> None:
+    toast.show_message("Eliminata: A", action_label="Annulla", on_action=MagicMock(), timeout_ms=30)
     toast.show_message("Impossibile scrivere il file")
 
     assert toast.message == "Eliminata: A"  # Annulla resta raggiungibile
-    toast._hide()  # scade la finestra di annullamento
-    assert toast.message == "Impossibile scrivere il file"
-    toast.cancel()
+    # La finestra di annullamento scade da sola: il messaggio in coda compare
+    assert wait_until(lambda: toast.message == "Impossibile scrivere il file")
 
 
 @requires_display
-def test_plain_message_after_undo_click_shows(gtk_init) -> None:
-    from gi.repository import Gtk
-
-    from command_quiver.ui.toast import ToastOverlay
-
-    toast = ToastOverlay(Gtk.Box())
+def test_plain_message_after_undo_click_shows(toast) -> None:
     undo = MagicMock()
     toast.show_message("Eliminata: A", action_label="Annulla", on_action=undo)
     toast.show_message("Copiato: B")
-    toast._on_action_clicked(None)
+
+    button_labelled(toast, "Annulla").emit("clicked")
 
     undo.assert_called_once()
     assert toast.message == "Copiato: B"
-    toast.cancel()
+
+
+@requires_display
+def test_message_hides_itself_after_its_timeout(toast) -> None:
+    toast.show_message("Copiato: Log", timeout_ms=30)
+    assert toast.message == "Copiato: Log"
+
+    assert wait_until(lambda: toast.message == "")

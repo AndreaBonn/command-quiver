@@ -311,3 +311,95 @@ def test_alt_arrow_on_empty_state_does_not_crash(gtk_init) -> None:
         handled = widget._on_key_pressed(None, Gdk.KEY_Up, 0, Gdk.ModifierType.ALT_MASK)
     assert handled is False
     on_move.assert_not_called()
+
+
+@requires_display
+class TestRowCallbacks:
+    def _row(self, entry_type="shell", **callbacks):
+        from command_quiver.ui.entry_list import EntryRow, RowCallbacks
+
+        entry = _make_entry(entry_type=entry_type)
+        row = EntryRow(
+            entry=entry,
+            on_edit=MagicMock(),
+            callbacks=RowCallbacks(on_edit=MagicMock(), **callbacks),
+        )
+        return row
+
+    def test_clicking_a_tag_chip_passes_the_tag(self, gtk_init) -> None:
+        from tests.conftest import button_labelled
+
+        on_tag = MagicMock()
+        row = self._row(on_tag=on_tag)
+
+        button_labelled(row, "test").emit("clicked")
+
+        on_tag.assert_called_once_with("test")
+
+    def test_tag_chip_without_handler_does_nothing(self, gtk_init) -> None:
+        from tests.conftest import button_labelled
+
+        row = self._row()
+
+        button_labelled(row, "test").emit("clicked")  # nessuna eccezione, nessuna azione
+
+    def test_run_handler_decides_instead_of_running_directly(self, gtk_init) -> None:
+        from tests.conftest import descendants
+
+        on_run = MagicMock()
+        row = self._row(on_run=on_run)
+        run_button = next(
+            b
+            for b in descendants(row)
+            if hasattr(b, "get_icon_name") and b.get_icon_name() == "media-playback-start-symbolic"
+        )
+
+        with patch("command_quiver.ui.entry_list.execute_in_terminal") as execute:
+            run_button.emit("clicked")
+
+        on_run.assert_called_once_with(row.entry)
+        execute.assert_not_called()
+
+    def test_copy_first_on_empty_list_returns_false(self, gtk_init) -> None:
+        from command_quiver.ui.entry_list import EntryListWidget
+
+        widget = EntryListWidget(on_entry_edit=MagicMock())
+        widget.update_entries([])
+
+        assert widget.copy_first() is False
+
+    def test_copy_first_copies_first_row_and_returns_true(self, gtk_init) -> None:
+        from command_quiver.ui.entry_list import EntryListWidget
+
+        widget = EntryListWidget(on_entry_edit=MagicMock())
+        widget.update_entries([_make_entry(1, content="uno"), _make_entry(2, content="due")])
+
+        with patch("command_quiver.ui.entry_list.copy_to_clipboard", return_value=True) as copy:
+            assert widget.copy_first() is True
+
+        copy.assert_called_once_with("uno")
+
+
+@requires_display
+class TestTerminalErrorDialog:
+    def test_error_dialog_shown_on_a_window_with_the_reason(self, gtk_init) -> None:
+        from gi.repository import Gtk
+
+        from command_quiver.core.i18n import init as i18n_init
+        from command_quiver.ui import entry_list
+
+        i18n_init("it")
+        parent = Gtk.Window()
+        with patch.object(entry_list.Gtk, "AlertDialog") as alert:
+            entry_list.show_terminal_error(parent=parent, message="gnome-terminal assente")
+
+        assert alert.call_args.kwargs["detail"] == "gnome-terminal assente"
+        alert.return_value.show.assert_called_once_with(parent)
+
+    def test_error_dialog_not_shown_without_a_window(self, gtk_init) -> None:
+        from command_quiver.ui import entry_list
+
+        with patch.object(entry_list.Gtk, "AlertDialog") as alert:
+            entry_list.show_terminal_error(parent=None, message="x")
+
+        alert.assert_not_called()
