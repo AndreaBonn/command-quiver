@@ -174,16 +174,25 @@ class Database:
         """Crea le tabelle e, solo su database vuoto, le sezioni iniziali nella lingua data."""
         self._seed_language = language
         try:
-            self.connection.executescript(_SCHEMA_SQL)
-            self._migrate()
-            self._populate_uuids()
-            self._seed_if_empty()
-            self.connection.commit()
+            self._build_schema()
             self._auto_backup()
             logger.info("Schema database inizializzato")
         except sqlite3.Error:
             logger.exception("Errore inizializzazione schema, tentativo di ricreare")
             self._recreate()
+
+    def _build_schema(self) -> None:
+        """Porta il database allo schema corrente: DDL, migrazioni, seed e uuid.
+
+        Unico percorso sia per l'avvio sia per la ricreazione dopo corruzione,
+        così un database ricreato è già migrato. Il seed precede l'assegnazione
+        degli uuid: le sezioni iniziali li ricevono subito, non al riavvio.
+        """
+        self.connection.executescript(_SCHEMA_SQL)
+        self._migrate()
+        self._seed_if_empty()
+        self._populate_uuids()
+        self.connection.commit()
 
     def _migrate(self) -> None:
         """Applica migrazioni incrementali basate su PRAGMA user_version.
@@ -304,9 +313,7 @@ class Database:
             logger.info("Backup database corrotto salvato in: %s", backup)
         try:
             self._connect(_allow_recreate=False)
-            self.connection.executescript(_SCHEMA_SQL)
-            self._seed_if_empty()
-            self.connection.commit()
+            self._build_schema()
         except sqlite3.Error:
             logger.critical("Impossibile ricreare il database: %s", self._db_path)
             raise

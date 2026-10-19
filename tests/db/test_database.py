@@ -2,6 +2,7 @@
 
 import sqlite3
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 
@@ -439,3 +440,48 @@ class TestLocalizedSeed:
         assert "Git" not in names
         assert "Generale" in names
         db.close()
+
+
+def test_initialize_fresh_database_assigns_uuid_to_seed_sections(db_path: Path) -> None:
+    """Regressione B6: le sezioni iniziali nascono con uuid già al primo avvio.
+
+    Il seed girava dopo l'assegnazione degli uuid: fino al riavvio le sezioni
+    restavano senza uuid e un sync nella stessa sessione esportava uuid nulli.
+    """
+    database = Database(db_path=db_path)
+
+    database.initialize(language="it")
+
+    try:
+        uuids = [row[0] for row in database.connection.execute("SELECT uuid FROM sections")]
+        assert len(uuids) == 4
+        assert all(UUID(value) for value in uuids)
+    finally:
+        database.close()
+
+
+def test_initialize_schema_error_recreates_fully_migrated_database(db_path: Path) -> None:
+    """Regressione B9: il database ricreato dopo un errore di schema è già migrato.
+
+    La ricreazione eseguiva solo DDL di base e seed: user_version restava 0 e
+    mancavano le colonne uuid, quindi le query del sync fallivano fino al riavvio.
+    """
+    legacy = sqlite3.connect(db_path)
+    # Una vista al posto della tabella entries fa fallire la creazione degli indici
+    legacy.executescript(
+        "CREATE TABLE sections (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);"
+        "CREATE VIEW entries AS SELECT 1 AS id;"
+    )
+    legacy.close()
+    database = Database(db_path=db_path)
+
+    database.initialize(language="it")
+
+    try:
+        version = database.connection.execute("PRAGMA user_version").fetchone()[0]
+        uuids = [row[0] for row in database.connection.execute("SELECT uuid FROM sections")]
+        assert version == 3
+        assert len(uuids) == 4
+        assert all(UUID(value) for value in uuids)
+    finally:
+        database.close()
