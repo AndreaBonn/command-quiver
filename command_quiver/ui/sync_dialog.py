@@ -56,6 +56,7 @@ class SyncSetupDialog(Gtk.Window):
         self._on_sync_now = on_sync_now
 
         self._build_ui()
+        self._setup_keyboard_shortcuts()
         self._load_current_values()
 
     def _build_ui(self) -> None:
@@ -72,17 +73,7 @@ class SyncSetupDialog(Gtk.Window):
         self._repo_entry = Gtk.Entry(placeholder_text=t("sync.repo_placeholder"))
         main_box.append(self._repo_entry)
         main_box.append(self._hint(t("sync.repo_hint")))
-
-        main_box.append(self._heading(t("sync.token")))
-        self._token_entry = Gtk.PasswordEntry(
-            placeholder_text=t("sync.token_placeholder"), show_peek_icon=True
-        )
-        main_box.append(self._token_entry)
-        link = Gtk.LinkButton(
-            uri=TOKEN_HELP_URL, label=t("sync.token_link"), halign=Gtk.Align.START
-        )
-        main_box.append(link)
-        main_box.append(self._hint(t("sync.token_hint")))
+        self._append_token_field(main_box)
 
         self._status_label = Gtk.Label(label="", xalign=0, wrap=True)
         main_box.append(self._status_label)
@@ -91,6 +82,20 @@ class SyncSetupDialog(Gtk.Window):
         main_box.append(self._last_sync_label)
         main_box.append(self._build_buttons())
 
+    def _append_token_field(self, box: Gtk.Box) -> None:
+        """Campo token con il link che spiega come crearlo."""
+        box.append(self._heading(t("sync.token")))
+        self._token_entry = Gtk.PasswordEntry(
+            placeholder_text=t("sync.token_placeholder"), show_peek_icon=True
+        )
+        box.append(self._token_entry)
+        link = Gtk.LinkButton(
+            uri=TOKEN_HELP_URL, label=t("sync.token_link"), halign=Gtk.Align.START
+        )
+        box.append(link)
+        box.append(self._hint(t("sync.token_hint")))
+
+    def _setup_keyboard_shortcuts(self) -> None:
         key_controller = Gtk.EventControllerKey()
         key_controller.connect("key-pressed", self._on_key_pressed)
         self.add_controller(key_controller)
