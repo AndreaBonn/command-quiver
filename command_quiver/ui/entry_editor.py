@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Callable
+from enum import Enum, auto
 
 import gi
 
@@ -16,15 +17,56 @@ from command_quiver.db.models import Entry, EntryCreate, EntryUpdate, Section
 from command_quiver.ui.editor_widgets import (
     ContentField,
     SectionPicker,
+    TypeSelector,
     button_with_hint,
     caption,
-    type_card,
 )
 from command_quiver.ui.tag_input import TagInput
 
 logger = logging.getLogger(__name__)
 
 _NAME_MAX_LENGTH = 100
+_SAVE_KEY = Gdk.KEY_s
+_CLOSE_KEY = Gdk.KEY_w
+_ENTER_KEYS = (Gdk.KEY_Return, Gdk.KEY_KP_Enter)
+
+
+class EditorCommand(Enum):
+    """Comando del dialog ricavato da una scorciatoia."""
+
+    SAVE = auto()
+    SAVE_AND_COPY = auto()
+    CLOSE = auto()
+    NONE = auto()
+
+
+def editor_command(keyval: int, ctrl: bool) -> EditorCommand:
+    """Mappa un tasto premuto nel dialog al comando corrispondente.
+
+    Parameters
+    ----------
+    keyval : int
+        Codice del tasto (costanti ``Gdk.KEY_*``).
+    ctrl : bool
+        True se Ctrl è premuto.
+
+    Returns
+    -------
+    EditorCommand
+        Escape chiude sempre; con Ctrl: S salva, W chiude, Invio salva e copia.
+        Ogni altra combinazione è ``NONE`` e lascia il tasto al widget.
+    """
+    if keyval == Gdk.KEY_Escape:
+        return EditorCommand.CLOSE
+    if not ctrl:
+        return EditorCommand.NONE
+    if keyval == _SAVE_KEY:
+        return EditorCommand.SAVE
+    if keyval == _CLOSE_KEY:
+        return EditorCommand.CLOSE
+    if keyval in _ENTER_KEYS:
+        return EditorCommand.SAVE_AND_COPY
+    return EditorCommand.NONE
 
 
 class EntryEditorDialog(Gtk.Window):
@@ -77,21 +119,14 @@ class EntryEditorDialog(Gtk.Window):
         state: Gdk.ModifierType,
     ) -> bool:
         """Gestisce le scorciatoie da tastiera."""
-        ctrl = state & Gdk.ModifierType.CONTROL_MASK
-        if keyval == Gdk.KEY_Escape:
+        command = editor_command(keyval, bool(state & Gdk.ModifierType.CONTROL_MASK))
+        if command is EditorCommand.NONE:
+            return False
+        if command is EditorCommand.CLOSE:
             self.close()
-            return True
-        if ctrl:
-            if keyval == Gdk.KEY_s:
-                self._do_save()
-                return True
-            if keyval == Gdk.KEY_w:
-                self.close()
-                return True
-            if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
-                self._do_save_and_copy()
-                return True
-        return False
+        else:
+            self._submit(copy=command is EditorCommand.SAVE_AND_COPY)
+        return True
 
     # --- Costruzione ---
 
@@ -112,7 +147,8 @@ class EntryEditorDialog(Gtk.Window):
         self.set_child(outer)
 
         main_box.append(self._build_name_field())
-        main_box.append(self._build_type_selector())
+        self._type_selector = TypeSelector(on_changed=self._on_type_changed)
+        main_box.append(self._type_selector)
         main_box.append(self._build_section_field())
         main_box.append(self._build_content_field())
 
@@ -134,22 +170,6 @@ class EntryEditorDialog(Gtk.Window):
         hint.add_css_class("dim-label")
         hint.add_css_class("caption")
         box.append(hint)
-        return box
-
-    def _build_type_selector(self) -> Gtk.Box:
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, homogeneous=True)
-        self._radio_prompt = type_card(
-            t("editor.type_prompt"), t("editor.type_prompt_desc"), "edit-paste-symbolic"
-        )
-        self._radio_shell = type_card(
-            t("editor.type_shell"), t("editor.type_shell_desc"), "utilities-terminal-symbolic"
-        )
-        self._radio_shell.set_group(self._radio_prompt)
-        self._radio_prompt.set_active(True)
-        for card in (self._radio_prompt, self._radio_shell):
-            card.connect("toggled", lambda _: self._on_type_toggled())
-        box.append(self._radio_prompt)
-        box.append(self._radio_shell)
         return box
 
     def _build_section_field(self) -> Gtk.Box:
@@ -183,28 +203,25 @@ class EntryEditorDialog(Gtk.Window):
         button_box.append(cancel_btn)
 
         save_copy_btn = button_with_hint(t("editor.btn_save_copy"), "Ctrl+↵")
-        save_copy_btn.connect("clicked", lambda _: self._do_save_and_copy())
+        save_copy_btn.connect("clicked", lambda _: self._submit(copy=True))
         button_box.append(save_copy_btn)
 
         save_btn = button_with_hint(t("editor.btn_save"), "Ctrl+S")
         save_btn.add_css_class("suggested-action")
-        save_btn.connect("clicked", lambda _: self._do_save())
+        save_btn.connect("clicked", lambda _: self._submit(copy=False))
         button_box.append(save_btn)
         return button_box
 
     def _update_placeholder(self) -> None:
-        key = self._entry_type()
+        key = self._type_selector.entry_type
         self._content_placeholder.set_label(t(f"editor.content_placeholder_{key}"))
         self._content_placeholder.set_visible(self._content_view.get_buffer().get_char_count() == 0)
 
     # --- Dati ---
 
-    def _entry_type(self) -> str:
-        return "shell" if self._radio_shell.get_active() else "prompt"
-
-    def _on_type_toggled(self) -> None:
+    def _on_type_changed(self, entry_type: str) -> None:
         self._update_placeholder()
-        self._section_dropdown.on_type_changed(self._entry_type())
+        self._section_dropdown.on_type_changed(entry_type)
 
     def _populate_fields(self, initial_section_id: int | None) -> None:
         """Popola i campi: dalla voce in modifica, o con la sezione aperta per una voce nuova.
@@ -213,7 +230,7 @@ class EntryEditorDialog(Gtk.Window):
         finché l'utente non ne sceglie una a mano.
         """
         if self._entry is None and initial_section_id is None:
-            self._section_dropdown.follow_type(self._entry_type())
+            self._section_dropdown.follow_type(self._type_selector.entry_type)
         else:
             self._section_dropdown.select_section(
                 self._entry.section_id if self._entry else initial_section_id
@@ -221,8 +238,7 @@ class EntryEditorDialog(Gtk.Window):
 
         if self._entry is not None:
             self._name_entry.set_text(self._entry.name)
-            if self._entry.type == "shell":
-                self._radio_shell.set_active(True)
+            self._type_selector.entry_type = self._entry.type
             self._content_view.get_buffer().set_text(self._entry.content)
             self._tag_input.set_tags(split_tags(self._entry.tags))
         self._update_placeholder()
@@ -247,7 +263,7 @@ class EntryEditorDialog(Gtk.Window):
         """Raccoglie i dati dai campi del form."""
         content = self._content_text()
         name = self._name_entry.get_text().strip() or name_from_content(content)
-        entry_type = self._entry_type()
+        entry_type = self._type_selector.entry_type
         section_id = self._section_dropdown.selected_section_id
         tags = join_tags(self._tag_input.tags)
 
@@ -264,21 +280,13 @@ class EntryEditorDialog(Gtk.Window):
             name=name, content=content, section_id=section_id, type=entry_type, tags=tags
         )
 
-    def _do_save(self) -> None:
-        """Salva la voce e chiude il dialog."""
+    def _submit(self, copy: bool) -> None:
+        """Salva la voce, con ``copy`` copia anche il contenuto negli appunti, e chiude."""
         if not self._validate():
             return
         data = self._collect_data()
-        if self._on_save:
-            self._on_save(data)
-        self.close()
-
-    def _do_save_and_copy(self) -> None:
-        """Salva, copia il contenuto negli appunti e chiude."""
-        if not self._validate():
-            return
-        data = self._collect_data()
-        copy_to_clipboard(data.content)
+        if copy:
+            copy_to_clipboard(data.content)
         if self._on_save:
             self._on_save(data)
         self.close()

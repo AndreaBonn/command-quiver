@@ -1,10 +1,13 @@
 """Widget riusati dalla finestra di modifica voce."""
 
+from collections.abc import Callable
+
 import gi
 
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk
 
+from command_quiver.core.i18n import t
 from command_quiver.db.models import Section
 from command_quiver.ui.library_actions import SECTION_ICON_BY_TYPE
 
@@ -43,6 +46,35 @@ def button_with_hint(label: str, hint: str) -> Gtk.Button:
     button = Gtk.Button(tooltip_text=f"{label} ({hint})")
     button.set_child(box)
     return button
+
+
+class TypeSelector(Gtk.Box):
+    """Scelta del tipo voce con due schede esclusive: prompt o comando shell."""
+
+    def __init__(self, on_changed: Callable[[str], None]) -> None:
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, homogeneous=True)
+        self._prompt = type_card(
+            t("editor.type_prompt"), t("editor.type_prompt_desc"), "edit-paste-symbolic"
+        )
+        self._shell = type_card(
+            t("editor.type_shell"), t("editor.type_shell_desc"), "utilities-terminal-symbolic"
+        )
+        self._shell.set_group(self._prompt)
+        self._prompt.set_active(True)
+        # Collegato dopo l'attivazione iniziale: la scelta di partenza non è un cambio
+        for card in (self._prompt, self._shell):
+            card.connect("toggled", lambda _: on_changed(self.entry_type))
+        self.append(self._prompt)
+        self.append(self._shell)
+
+    @property
+    def entry_type(self) -> str:
+        """Tipo selezionato: "shell" oppure "prompt"."""
+        return "shell" if self._shell.get_active() else "prompt"
+
+    @entry_type.setter
+    def entry_type(self, value: str) -> None:
+        (self._shell if value == "shell" else self._prompt).set_active(True)
 
 
 class SectionPicker(Gtk.DropDown):

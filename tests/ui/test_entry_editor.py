@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from command_quiver.db.models import Entry, EntryCreate, EntryUpdate, Section
 from tests.conftest import requires_display
 
@@ -161,7 +163,7 @@ class TestEntryEditorDataCollection:
         dialog._name_entry.set_text("Name")
         buf = dialog._content_view.get_buffer()
         buf.set_text("content")
-        dialog._radio_shell.set_active(True)
+        dialog._type_selector.entry_type = "shell"
 
         data = dialog._collect_data()
         assert data.type == "shell"
@@ -171,7 +173,7 @@ class TestEntryEditorDataCollection:
         dialog._name_entry.set_text("Name")
         buf = dialog._content_view.get_buffer()
         buf.set_text("content")
-        dialog._radio_prompt.set_active(True)
+        dialog._type_selector.entry_type = "prompt"
 
         data = dialog._collect_data()
         assert data.type == "prompt"
@@ -258,7 +260,7 @@ class TestEntryEditorPopulation:
             entry=entry,
             on_save=MagicMock(),
         )
-        assert dialog._radio_shell.get_active() is True
+        assert dialog._type_selector.entry_type == "shell"
 
     def test_populates_tags(self, gtk_init) -> None:
         import gi
@@ -308,7 +310,7 @@ class TestEntryEditorPopulation:
 class TestEntryEditorSave:
     """Test salvataggio voce."""
 
-    def test_do_save_calls_callback_on_valid_input(self, gtk_init) -> None:
+    def test_submit_calls_callback_on_valid_input(self, gtk_init) -> None:
         import gi
 
         from command_quiver.ui.entry_editor import EntryEditorDialog
@@ -327,13 +329,13 @@ class TestEntryEditorSave:
         buf = dialog._content_view.get_buffer()
         buf.set_text("Content")
 
-        dialog._do_save()
+        dialog._submit(copy=False)
         mock_save.assert_called_once()
         data = mock_save.call_args[0][0]
         assert isinstance(data, EntryCreate)
         assert data.name == "Test"
 
-    def test_do_save_does_not_call_on_invalid(self, gtk_init) -> None:
+    def test_submit_does_not_call_on_invalid(self, gtk_init) -> None:
         import gi
 
         from command_quiver.ui.entry_editor import EntryEditorDialog
@@ -349,10 +351,10 @@ class TestEntryEditorSave:
             on_save=mock_save,
         )
         # Campi vuoti
-        dialog._do_save()
+        dialog._submit(copy=False)
         mock_save.assert_not_called()
 
-    def test_do_save_and_copy_copies_content(self, gtk_init) -> None:
+    def test_submit_with_copy_copies_content(self, gtk_init) -> None:
         import gi
 
         from command_quiver.ui.entry_editor import EntryEditorDialog
@@ -372,7 +374,7 @@ class TestEntryEditorSave:
         buf.set_text("copied content")
 
         with patch("command_quiver.ui.entry_editor.copy_to_clipboard") as mock_copy:
-            dialog._do_save_and_copy()
+            dialog._submit(copy=True)
             mock_copy.assert_called_once_with("copied content")
             mock_save.assert_called_once()
 
@@ -432,6 +434,31 @@ class TestEntryEditorKeyboard:
         result = dialog._on_key_pressed(None, Gdk.KEY_w, 0, Gdk.ModifierType.CONTROL_MASK)
         assert result is True
 
+    @pytest.mark.parametrize(
+        ("keyval_name", "copy"),
+        [("s", False), ("Return", True), ("KP_Enter", True)],
+        ids=["ctrl-s-saves", "ctrl-enter-saves-and-copies", "ctrl-keypad-enter-saves-and-copies"],
+    )
+    def test_ctrl_shortcut_submits_with_copy_flag(
+        self, gtk_init, keyval_name: str, copy: bool
+    ) -> None:
+        import gi
+
+        from command_quiver.ui.entry_editor import EntryEditorDialog
+
+        gi.require_version("Gtk", "4.0")
+        from gi.repository import Gdk, Gtk
+
+        dialog = EntryEditorDialog(
+            parent=Gtk.Window(), sections=_make_sections(), on_save=MagicMock()
+        )
+        keyval = getattr(Gdk, f"KEY_{keyval_name}")
+
+        with patch.object(dialog, "_submit") as submit:
+            dialog._on_key_pressed(None, keyval, 0, Gdk.ModifierType.CONTROL_MASK)
+
+        submit.assert_called_once_with(copy=copy)
+
     def test_unhandled_key_returns_false(self, gtk_init) -> None:
         import gi
 
@@ -471,7 +498,7 @@ class TestEntryEditorKeyboard:
 class TestEntryEditorDelete:
     """Test eliminazione voce."""
 
-    def test_do_save_and_copy_invalid_does_not_copy(self, gtk_init) -> None:
+    def test_submit_with_copy_invalid_does_not_copy(self, gtk_init) -> None:
         import gi
 
         from command_quiver.ui.entry_editor import EntryEditorDialog
@@ -488,7 +515,7 @@ class TestEntryEditorDelete:
         )
         # Campi vuoti
         with patch("command_quiver.ui.entry_editor.copy_to_clipboard") as mock_copy:
-            dialog._do_save_and_copy()
+            dialog._submit(copy=True)
             mock_copy.assert_not_called()
             mock_save.assert_not_called()
 
@@ -528,7 +555,7 @@ class TestEntryEditorDelete:
         )
         assert dialog._is_edit is False
 
-    def test_do_save_without_callback_noop(self, gtk_init) -> None:
+    def test_submit_without_callback_noop(self, gtk_init) -> None:
         import gi
 
         from command_quiver.ui.entry_editor import EntryEditorDialog
@@ -547,7 +574,7 @@ class TestEntryEditorDelete:
         buf.set_text("Content")
 
         # Non deve sollevare eccezioni anche senza callback
-        dialog._do_save()
+        dialog._submit(copy=False)
 
 
 @requires_display
@@ -583,7 +610,7 @@ class TestEntryEditorUx:
         assert dialog._content_placeholder.get_visible() is True
         assert dialog._content_placeholder.get_label().startswith("Es. Riassumi")
 
-        dialog._radio_shell.set_active(True)
+        dialog._type_selector.entry_type = "shell"
         assert "git log" in dialog._content_placeholder.get_label()
 
         dialog._content_view.get_buffer().set_text("ls")
@@ -632,13 +659,13 @@ class TestEntryEditorSectionFollowsType:
 
     def test_switching_to_shell_moves_to_shell_section(self, gtk_init) -> None:
         dialog = self._dialog()
-        dialog._radio_shell.set_active(True)
+        dialog._type_selector.entry_type = "shell"
         assert dialog._collect_data().section_id == 1
 
     def test_manual_choice_is_not_overridden(self, gtk_init) -> None:
         dialog = self._dialog()
         dialog._section_dropdown.set_selected(2)  # Generale, scelta a mano
-        dialog._radio_shell.set_active(True)
+        dialog._type_selector.entry_type = "shell"
         assert dialog._collect_data().section_id == 3
 
 
@@ -718,3 +745,63 @@ class TestEditorKeysAndTypes:
         picker.select_section(999)
 
         assert picker.selected_section_id == 2
+
+
+class TestEditorCommand:
+    """editor_command è pura: nessun display richiesto."""
+
+    def test_editor_command_escape_without_ctrl_closes(self) -> None:
+        from gi.repository import Gdk
+
+        from command_quiver.ui.entry_editor import EditorCommand, editor_command
+
+        assert editor_command(Gdk.KEY_Escape, ctrl=False) is EditorCommand.CLOSE
+
+    def test_editor_command_ctrl_s_saves(self) -> None:
+        from gi.repository import Gdk
+
+        from command_quiver.ui.entry_editor import EditorCommand, editor_command
+
+        assert editor_command(Gdk.KEY_s, ctrl=True) is EditorCommand.SAVE
+
+    def test_editor_command_s_without_ctrl_is_none(self) -> None:
+        from gi.repository import Gdk
+
+        from command_quiver.ui.entry_editor import EditorCommand, editor_command
+
+        assert editor_command(Gdk.KEY_s, ctrl=False) is EditorCommand.NONE
+
+    def test_editor_command_ctrl_w_closes(self) -> None:
+        from gi.repository import Gdk
+
+        from command_quiver.ui.entry_editor import EditorCommand, editor_command
+
+        assert editor_command(Gdk.KEY_w, ctrl=True) is EditorCommand.CLOSE
+
+    def test_editor_command_ctrl_return_saves_and_copies(self) -> None:
+        from gi.repository import Gdk
+
+        from command_quiver.ui.entry_editor import EditorCommand, editor_command
+
+        assert editor_command(Gdk.KEY_Return, ctrl=True) is EditorCommand.SAVE_AND_COPY
+
+    def test_editor_command_ctrl_keypad_enter_saves_and_copies(self) -> None:
+        from gi.repository import Gdk
+
+        from command_quiver.ui.entry_editor import EditorCommand, editor_command
+
+        assert editor_command(Gdk.KEY_KP_Enter, ctrl=True) is EditorCommand.SAVE_AND_COPY
+
+    def test_editor_command_return_without_ctrl_is_none(self) -> None:
+        from gi.repository import Gdk
+
+        from command_quiver.ui.entry_editor import EditorCommand, editor_command
+
+        assert editor_command(Gdk.KEY_Return, ctrl=False) is EditorCommand.NONE
+
+    def test_editor_command_unmapped_key_with_ctrl_is_none(self) -> None:
+        from gi.repository import Gdk
+
+        from command_quiver.ui.entry_editor import EditorCommand, editor_command
+
+        assert editor_command(Gdk.KEY_a, ctrl=True) is EditorCommand.NONE

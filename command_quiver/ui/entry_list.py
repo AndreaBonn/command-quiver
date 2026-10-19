@@ -52,15 +52,12 @@ class EntryRow(Gtk.Box):
     def __init__(
         self,
         entry: Entry,
-        on_edit: Callable[[Entry], None],
-        on_move: Callable[[int, int], None] | None = None,
-        on_use: Callable[[int], None] | None = None,
+        callbacks: RowCallbacks,
         show_move: bool = False,
-        callbacks: RowCallbacks | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.entry = entry
-        self._callbacks = callbacks or RowCallbacks(on_edit=on_edit, on_move=on_move, on_use=on_use)
+        self._callbacks = callbacks
         self.add_css_class("entry-row")
         self.set_tooltip_text(self._tooltip_text())
 
@@ -193,17 +190,9 @@ def show_terminal_error(parent: Gtk.Root | None, message: str) -> None:
 class EntryListWidget(Gtk.Box):
     """Lista scrollabile delle voci con stato vuoto fornito dal contenitore."""
 
-    def __init__(
-        self,
-        on_entry_edit: Callable[[Entry], None],
-        on_move: Callable[[int, int], None] | None = None,
-        on_use: Callable[[int], None] | None = None,
-        callbacks: RowCallbacks | None = None,
-    ) -> None:
+    def __init__(self, callbacks: RowCallbacks) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        self._callbacks = callbacks or RowCallbacks(
-            on_edit=on_entry_edit, on_move=on_move, on_use=on_use
-        )
+        self._callbacks = callbacks
         self._entries: list[Entry] = []
         self._empty_state: Gtk.Widget | None = None
         self._show_move = False
@@ -246,12 +235,7 @@ class EntryListWidget(Gtk.Box):
         self._show_move = show_move
         for entry in entries:
             self._list_box.append(
-                EntryRow(
-                    entry=entry,
-                    on_edit=self._callbacks.on_edit,
-                    show_move=show_move,
-                    callbacks=self._callbacks,
-                )
+                EntryRow(entry=entry, callbacks=self._callbacks, show_move=show_move)
             )
 
     def _on_key_pressed(

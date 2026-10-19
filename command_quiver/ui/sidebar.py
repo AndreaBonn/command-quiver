@@ -129,7 +129,6 @@ class SidebarPanel(Gtk.Window):
         paned.set_start_child(self._section_panel)
         paned.set_shrink_start_child(False)
         self._entry_list = EntryListWidget(
-            on_entry_edit=self._on_entry_click,
             callbacks=RowCallbacks(
                 on_edit=self._on_entry_click,
                 on_move=lambda eid, d: self._library.move(eid, d),
