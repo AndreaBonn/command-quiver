@@ -35,3 +35,18 @@ def test_format_repo_ref_joins_owner_and_name() -> None:
 
 def test_format_repo_ref_empty_when_not_configured() -> None:
     assert format_repo_ref(owner="", name="") == ""
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("github.com/mrossi", None),
+        ("mrossi/.git", None),
+        ("https://github.com/mrossi/.git", None),
+        ("mrossi/vault/", ("mrossi", "vault")),
+        ("http://www.github.com/mrossi/vault", ("mrossi", "vault")),
+    ],
+    ids=["host-and-owner-only", "empty-name", "url-empty-name", "trailing-slash", "http-www"],
+)
+def test_parse_repo_ref_edge_inputs(text: str, expected: tuple[str, str] | None) -> None:
+    assert parse_repo_ref(text) == expected

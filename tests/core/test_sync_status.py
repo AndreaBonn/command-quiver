@@ -60,3 +60,31 @@ def test_failure_offers_details() -> None:
     view = _describe(last_sync=FIVE_MIN_AGO, outcome=(False, 0, 0))
     assert view.state is SyncState.ERROR
     assert view.action == "Dettagli"
+
+
+def test_disabled_while_pending_still_says_local() -> None:
+    view = _describe(enabled=False, pending=True)
+
+    assert view.state is SyncState.LOCAL
+
+
+def test_enabled_never_synced_is_pending_with_never_text() -> None:
+    """Mai "OK" prima di un esito reale: senza sync riuscite lo stato è in attesa."""
+    view = _describe()
+
+    assert (view.state, view.text) == (SyncState.PENDING, "Non ancora sincronizzato")
+
+
+@pytest.mark.parametrize(
+    ("pulled", "pushed", "expected"),
+    [
+        (2, 0, "Sincronizzato 5 minuti fa: 2 ricevute, 0 inviate"),
+        (0, 3, "Sincronizzato 5 minuti fa: 0 ricevute, 3 inviate"),
+        (0, 0, "Sincronizzato 5 minuti fa"),
+    ],
+    ids=["only-pulled", "only-pushed", "nothing-moved"],
+)
+def test_ok_shows_counts_only_when_something_moved(pulled: int, pushed: int, expected: str) -> None:
+    view = _describe(outcome=(True, pulled, pushed), last_sync=FIVE_MIN_AGO)
+
+    assert (view.state, view.text) == (SyncState.OK, expected)

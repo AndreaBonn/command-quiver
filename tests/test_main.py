@@ -94,7 +94,7 @@ class TestMainFunction:
         log_file = log_dir / "app.log"
 
         mock_app = MagicMock()
-        mock_app.run.return_value = 0
+        mock_app.run.return_value = 3
 
         with (
             patch("command_quiver.main.LOG_DIR", log_dir),
@@ -111,7 +111,8 @@ class TestMainFunction:
 
             exit_code = main()
 
-            assert exit_code == 0
+            # Il codice d'uscita dell'app arriva intatto al processo
+            assert exit_code == 3
             mock_app.run.assert_called_once()
 
     def test_version_flag_prints_version_and_exits(self) -> None:

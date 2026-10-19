@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from command_quiver import APP_ID
 from tests.conftest import FakeRuntime
 
@@ -150,6 +152,36 @@ class TestChangeLanguage:
 
             assert mock_settings.language == "en"
             mock_save.assert_called_once_with(mock_settings)
+
+    @pytest.mark.parametrize("was_visible", [True, False], ids=["visible", "hidden"])
+    def test_change_language_presents_new_window_only_if_old_was_visible(
+        self, was_visible: bool
+    ) -> None:
+        with (
+            patch("command_quiver.app.Gtk"),
+            patch("command_quiver.app.Gdk"),
+            patch("command_quiver.app.save_settings"),
+            patch("command_quiver.app.SidebarPanel") as mock_sidebar_cls,
+        ):
+            from command_quiver.app import CommandQuiverApp
+
+            app = CommandQuiverApp()
+            app._settings = MagicMock()
+            app._db = MagicMock()
+            old_sidebar = MagicMock()
+            old_sidebar.get_default_size.return_value = (640, 600)
+            old_sidebar.get_visible.return_value = was_visible
+            app._sidebar = old_sidebar
+
+            with (
+                patch("command_quiver.core.i18n.get_language", return_value="it"),
+                patch("command_quiver.core.i18n.init"),
+                patch.object(app, "remove_window"),
+                patch.object(app, "add_window"),
+            ):
+                app._change_language("en")
+
+            assert mock_sidebar_cls.return_value.present.called is was_visible
 
     def test_change_language_rebuilds_sidebar(self) -> None:
         with (

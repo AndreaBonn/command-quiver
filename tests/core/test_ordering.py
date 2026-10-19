@@ -37,3 +37,11 @@ def test_duplicate_positions_are_spread_so_the_move_sticks() -> None:
     final = {**dict(rows), **result}
     ordered = sorted(final.items(), key=lambda item: item[1])
     assert [entry_id for entry_id, _ in ordered] == [3, 1, 2]
+
+
+def test_duplicate_positions_become_consecutive_from_the_lowest() -> None:
+    """Con posizioni tutte uguali e base non zero lo scambio resta visibile."""
+    rows = [(1, 5), (2, 5), (3, 5)]
+
+    # La voce 3 prende la posizione 5, che già aveva: restituite solo quelle che cambiano
+    assert reorder_positions(rows, moved_id=3, target_id=1) == {1: 6, 2: 7}
