@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import gi
 
 gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, GLib, Gtk, Pango
 
 from command_quiver.core.clipboard import copy_to_clipboard

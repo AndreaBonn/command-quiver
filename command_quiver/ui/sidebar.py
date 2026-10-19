@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import gi
 
 gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk
 
 from command_quiver.core.i18n import get_language, t

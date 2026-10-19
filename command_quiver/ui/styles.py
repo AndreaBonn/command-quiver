@@ -3,6 +3,7 @@
 import gi
 
 gi.require_version("Gtk", "4.0")
+gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gtk
 
 # I colori dei badge sono espliciti: @accent_color non esiste nel tema GTK4
