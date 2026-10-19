@@ -22,17 +22,33 @@ command_quiver/
 │   ├── clipboard.py      # Copia negli appunti via GDK4
 │   ├── executor.py       # Esecuzione comandi in gnome-terminal (shlex.quote)
 │   ├── github_client.py  # Client GitHub Contents API (solo stdlib urllib)
-│   ├── i18n.py           # Internazionalizzazione it/en
+│   ├── i18n.py           # Internazionalizzazione it/en (dizionari in core/locales/)
+│   ├── library_io.py     # Formato JSON di import/export della libreria
+│   ├── ordering.py       # Riordino per trascinamento (funzione pura)
+│   ├── presentation.py   # Funzioni pure: tempo relativo, nome da contenuto, tag, anteprima
+│   ├── repo_ref.py       # Parsing "utente/repo" o URL GitHub (campo unico)
+│   ├── samples.py        # Voci di esempio del primo avvio (it/en)
 │   ├── settings.py       # Config JSON persistente + SyncSettings + token management
-│   └── sync_engine.py    # Sync engine: export, merge (last-write-wins), push/pull
+│   ├── sync_engine.py    # Sync engine: export, merge (last-write-wins), push/pull
+│   └── sync_status.py    # Testo dello stato sync (mai "OK" prima di un esito reale)
 ├── ui/
-│   ├── sidebar.py        # Pannello laterale (debounce search, sort personale, selettore lingua)
-│   ├── entry_list.py     # Lista voci con ordinamento e move up/down
-│   ├── entry_editor.py   # Dialog creazione/modifica
-│   ├── section_panel.py  # Pannello sezioni con CRUD
+│   ├── sidebar.py        # Finestra principale: compone i widget sotto
+│   ├── header.py         # HeaderBar: "+ Nuova" e menu ☰ (lingua, sync, import/export...)
+│   ├── window_actions.py # Azioni win.* e scorciatoie (Ctrl+F/N/Q/?), finestra Informazioni
+│   ├── search_bar.py     # Ricerca (debounce) + ordinamento
+│   ├── library_controller.py # Operazioni sulle voci: salva, elimina con Annulla, riordina, file
+│   ├── pending_delete.py # Eliminazione rimandata: 5 s per Annulla, poi definitiva
+│   ├── entry_list.py     # Lista voci: anteprima, tag, copia/esegui, Alt+↑/↓ (+ row_dnd.py: trascinamento)
+│   ├── empty_states.py   # Primo avvio, sezione vuota, ricerca senza risultati
+│   ├── run_confirm.py    # Conferma prima di eseguire ("non chiedere più" per voce)
+│   ├── entry_editor.py   # Dialog creazione/modifica (+ editor_widgets.py, tag_input.py)
+│   ├── section_panel.py  # Pannello sezioni con CRUD (+ section_row.py)
 │   ├── section_manager.py # Dialog gestione sezioni (validazione duplicati)
 │   ├── sync_dialog.py    # Dialog configurazione sync GitHub
-│   └── styles.py         # CSS theme-aware (@success_color, @accent_color)
+│   ├── status_bar.py     # Stato sync in fondo alla finestra
+│   ├── toast.py          # Avvisi temporanei
+│   ├── library_actions.py # Import/export da file, esempi
+│   └── styles.py         # CSS (colori dei badge espliciti: @accent_color manca nel tema GTK4)
 └── assets/
     └── icon.png     # Icona applicazione
 ```
@@ -47,7 +63,11 @@ command_quiver/
 - Sync token path: ~/.config/command-quiver/.sync_token (600 perms)
 - Single instance: GtkApplication + D-Bus (FLAGS_NONE)
 - Backup auto DB: ogni 5 avvii, max 3 copie
-- Chiusura finestra (X o Escape) = termina l'app, con sync finale e salvataggio stato
+- Chiusura finestra (X o Ctrl+Q) = termina l'app, con sync finale e salvataggio stato.
+  Esc svuota la ricerca e non chiude l'app (proposta UX M15, 2026-10-19)
+- Sezioni iniziali create solo su DB vuoto, nella lingua delle impostazioni; "Generale"
+  non si traduce (il codice la usa come fallback per nome)
+- Proposte UX e stato di applicazione: docs/ux-proposte/index.html (codici M/V/E/Y/S/L/I)
 
 ## Sync cross-device (GitHub)
 

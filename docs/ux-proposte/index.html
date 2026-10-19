@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proposte UX</title>
+<style>
+/* ===== 1. Token del prodotto: GTK4 tema predefinito (Adwaita), ricavati dagli screenshot reali ===== */
+:root{
+  --brand:#3584E4;--brand-hover:#1C71D8;--brand-soft:#DCE8F8;
+  --n-0:#FFFFFF;--n-50:#FAFAFA;--n-100:#F6F5F4;--n-200:#DEDDDA;--n-300:#C0BFBC;--n-500:#77767B;--n-600:#5E5C64;--n-700:#3D3846;--n-900:#2E3436;
+  --ok:#26A269;--ok-soft:#DFF3E8;--warn:#C64600;--warn-soft:#FCEBD9;--bad:#C01C28;--bad-soft:#F8DCDE;--info:#1C71D8;
+  --app-font:"Cantarell","Noto Sans","Ubuntu",-apple-system,"Segoe UI",sans-serif;
+  --mono:"Source Code Pro","DejaVu Sans Mono","Ubuntu Mono",ui-monospace,monospace;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.08);--shadow-lg:0 12px 28px rgba(0,0,0,.18);
+}
+/* ===== 2. Strumento di scelta (cornice esterna): di norma non va toccato ===== */
+:root{--tool-bg:#EEE8E1;--tool-ink:#1E1915;--tool-muted:#6B5D4E;--tool-line:#D9CFC3;--tool-card:#FFFFFF;--tool-accent:#2F5F7A;--tool-on-accent:#FFFFFF;--tool-accent-bg:#E3EDF2}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--tool-bg:#1B1714;--tool-ink:#F1EBE4;--tool-muted:#B3A08A;--tool-line:#3A322B;--tool-card:#241E1A;--tool-accent:#8FBCD6;--tool-on-accent:#10202A;--tool-accent-bg:#22323B}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{font:400 14px/1.5 -apple-system,"Segoe UI",Inter,sans-serif;background:var(--tool-bg);color:var(--tool-ink)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--tool-accent);outline-offset:2px}
+.tool-bar{position:sticky;top:0;z-index:200;background:var(--tool-card);border-bottom:1px solid var(--tool-line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.tool-bar h1{font-size:15px;font-weight:700;margin:0}
+.tool-bar h1 span{font-weight:500;color:var(--tool-muted)}
+.tabs{display:flex;gap:2px;background:var(--tool-bg);padding:3px;border-radius:9px;flex-wrap:wrap}
+.tabs button{border:0;background:transparent;padding:6px 12px;border-radius:7px;cursor:pointer;font-weight:500;color:var(--tool-muted)}
+.tabs button[aria-selected="true"]{background:var(--tool-card);color:var(--tool-ink);box-shadow:var(--shadow-sm)}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--tool-line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:5px 10px;cursor:pointer;color:var(--tool-muted);font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--tool-accent-bg);color:var(--tool-ink);font-weight:600}
+.spacer{flex:1}
+.ctrl{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ctrl-label{font-size:12px;color:var(--tool-muted)}
+.tool-btn{border:1px solid var(--tool-accent);background:var(--tool-accent);color:var(--tool-on-accent);border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:600;font-size:13px}
+.tool-btn--ghost{background:var(--tool-card);color:var(--tool-ink);border-color:var(--tool-line)}
+.layout{display:grid;grid-template-columns:minmax(300px,360px) 1fr;min-height:calc(100vh - 56px)}
+.panel{border-right:1px solid var(--tool-line);background:var(--tool-card);padding:16px;overflow:auto;max-height:calc(100vh - 56px);position:sticky;top:56px}
+.stage{padding:20px;overflow:hidden}
+@media (max-width:900px){.layout{grid-template-columns:1fr}.panel{position:static;max-height:52vh;border-right:0;border-bottom:1px solid var(--tool-line)}.stage{padding:12px 0}.tool-bar{position:static}}
+.panel__count{display:flex;align-items:baseline;gap:8px;margin:0 0 4px}
+.panel__count strong{font-size:22px;font-variant-numeric:tabular-nums}
+.panel__intro{font-size:13px;color:var(--tool-muted);margin:0 0 12px}
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 14px}
+.group{margin:0 0 18px}
+.group__head{display:flex;justify-content:space-between;align-items:center;margin:0 0 6px}
+.group__title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--tool-muted);margin:0}
+.group__all{border:0;background:none;color:var(--tool-accent);cursor:pointer;font-size:12px;font-weight:600}
+.prop{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;padding:10px;border:1px solid var(--tool-line);border-radius:10px;margin-bottom:6px;transition:border-color .2s,background-color .2s}
+.prop.is-flash{border-color:var(--tool-accent);background:var(--tool-accent-bg)}
+.prop input{margin:3px 0 0;width:18px;height:18px;accent-color:var(--tool-accent);cursor:pointer}
+.prop__head{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
+.prop__code{font-weight:700;color:var(--tool-accent);cursor:pointer;border:0;background:none;padding:0;font-size:13px;text-decoration:underline;text-underline-offset:2px}
+.prop__title{font-weight:600;font-size:13.5px;cursor:pointer}
+.prop__why,.prop__tags{grid-column:2}
+.prop__why{margin:0;font-size:12.5px;color:var(--tool-muted)}
+.prop__tags{display:flex;gap:4px;flex-wrap:wrap}
+.chip{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;border:1px solid var(--tool-line);color:var(--tool-muted);white-space:nowrap}
+.chip--rapida{border-color:#9CC5A6;color:#2C5A38;background:#E8F3EA}
+.chip--media{border-color:#D8BD79;color:#6E5C2B;background:#FBF6E9}
+.chip--ampia{border-color:#E0A79F;color:#941811;background:#FCEDEB}
+.chip--nota{border-style:dashed}
+.chip--fatta{border-color:var(--tool-accent);color:var(--tool-accent)}
+.frame{margin:0 auto;background:var(--n-50);color:var(--n-900);border-radius:12px;box-shadow:var(--shadow-lg);overflow:hidden;container-type:inline-size;max-width:1280px;position:relative;transition:max-width .25s ease}
+.frame.is-mobile{max-width:390px}
+@media (max-width:900px){.frame{border-radius:0}}
+.screen{display:none}
+.screen.is-active{display:block}
+[data-mark]{position:relative}
+.pin{position:absolute;top:-12px;left:-12px;z-index:40;min-width:26px;min-height:26px;display:inline-grid;place-items:center;font:700 11px/1 -apple-system,"Segoe UI",sans-serif;background:var(--tool-accent);color:var(--tool-on-accent);border:2px solid #fff;border-radius:99px;padding:3px 6px;cursor:pointer}
+.pins-off .pin{display:none}
+.flash-target{animation:flash 1.4s ease}
+@keyframes flash{0%,60%{box-shadow:0 0 0 4px rgba(47,95,122,.55)}100%{box-shadow:0 0 0 4px rgba(47,95,122,0)}}
+@media (prefers-reduced-motion:reduce){.flash-target{animation:none;outline:3px solid var(--tool-accent)}}
+.mock-note{font-size:12px;color:var(--n-600);background:repeating-linear-gradient(-45deg,var(--n-100),var(--n-100) 6px,var(--n-50) 6px,var(--n-50) 12px);border:1px dashed var(--n-300);border-radius:8px;padding:6px 10px;margin:0 0 10px}
+.placeholder{background:#FBF6E9;border:1px dashed #9C833E;color:#6E5C2B;border-radius:6px;padding:0 6px;font-weight:600}
+dialog{border:1px solid var(--tool-line);border-radius:14px;padding:20px;max-width:560px;width:calc(100% - 32px);background:var(--tool-card);color:var(--tool-ink)}
+dialog::backdrop{background:rgba(20,15,10,.5)}
+dialog textarea{width:100%;min-height:220px;border:1px solid var(--tool-line);border-radius:8px;padding:10px;background:var(--tool-bg);font:13px/1.5 ui-monospace,Menlo,monospace}
+dialog h2{margin:0 0 6px;font-size:17px}
+dialog p{margin:0 0 10px;color:var(--tool-muted);font-size:13px}
+.dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+
+/* ===== 3. Stile dell'app ricostruita: finestra GTK4, prefissato con .app ===== */
+.app{font:400 14px/1.45 var(--app-font);color:var(--n-900)}
+.desk{background:linear-gradient(160deg,#E9E7E4,#D7D5D2);padding:28px 24px 36px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.desk > .mock-note{max-width:640px;width:100%}
+.ic{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle}
+.ic--fill{fill:currentColor;stroke:none}
+.win{width:100%;max-width:600px;background:var(--n-50);border-radius:12px;box-shadow:var(--shadow-lg);overflow:hidden;border:1px solid #CFCDCA;display:flex;flex-direction:column}
+.win--dlg{max-width:500px}
+.win--sync{max-width:440px}
+.titlebar{display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--n-100);border-bottom:1px solid var(--n-200);min-height:46px}
+.titlebar__title{flex:1;text-align:center;font-weight:700;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wbtns{display:flex;gap:10px;color:var(--n-700);padding-right:4px;font-size:13px}
+.wbtns span{width:22px;height:22px;border-radius:99px;display:grid;place-items:center}
+.wbtns span:last-child{background:var(--n-200)}
+.hbtn{border:0;background:transparent;border-radius:6px;padding:6px 8px;display:inline-flex;align-items:center;gap:6px;color:var(--n-900);cursor:pointer}
+.hbtn:hover{background:var(--n-200)}
+.hbtn--accent{background:var(--brand);color:#fff}
+.hbtn--accent:hover{background:var(--brand-hover)}
+.searchrow{display:flex;gap:6px;align-items:center;padding:8px}
+.search{flex:1;min-width:0;display:flex;align-items:center;gap:8px;border:1px solid var(--n-200);background:var(--n-0);border-radius:6px;padding:6px 10px;color:var(--n-500)}
+.search span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+kbd{font:600 11px/1 var(--app-font);border:1px solid var(--n-300);border-bottom-width:2px;border-radius:4px;padding:2px 5px;color:var(--n-600);background:var(--n-100);white-space:nowrap}
+.sortbtn{border:1px solid var(--n-200);background:var(--n-0);border-radius:6px;padding:6px 10px;display:inline-flex;gap:6px;align-items:center;white-space:nowrap}
+.body{display:grid;grid-template-columns:184px 1fr;border-top:1px solid var(--n-200);min-height:420px}
+.body > *{min-width:0}
+.secs{background:var(--n-100);border-right:1px solid var(--n-200);display:flex;flex-direction:column}
+.secs__h{font-size:12px;padding:8px 12px 4px;color:var(--n-700)}
+.secs__list{flex:1}
+.sec{display:flex;align-items:center;gap:8px;padding:9px 12px;position:relative}
+.sec.is-sel{background:var(--brand);color:#fff}
+.sec .sname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.count{font-size:12px;font-variant-numeric:tabular-nums;background:rgba(0,0,0,.07);border-radius:99px;padding:0 7px;line-height:18px}
+.sec.is-sel .count{background:rgba(255,255,255,.25)}
+.dots{border:0;background:var(--n-200);border-radius:5px;padding:1px 5px;line-height:1;color:var(--n-700)}
+.secs__add{padding:8px;text-align:center;font-weight:500}
+.popover{position:absolute;left:60%;top:32px;z-index:30;background:var(--n-0);border:1px solid var(--n-200);border-radius:8px;box-shadow:var(--shadow-lg);padding:4px;min-width:180px;color:var(--n-900)}
+.popover div{padding:6px 10px;border-radius:5px}
+.popover .is-dis{color:var(--n-500);font-size:12px}
+.list{display:flex;flex-direction:column;background:var(--n-0)}
+.list__rows{flex:1}
+.row{display:flex;align-items:center;gap:6px;padding:8px 8px 8px 10px;border-bottom:1px solid #EDEDEC;position:relative}
+.row.is-hover{background:#EEF4FC}
+.row__main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.name{font-weight:500}
+.preview{font:12px/1.3 var(--mono);color:var(--n-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.tags{display:flex;gap:4px;flex-wrap:wrap}
+.tag{font-size:11px;border:1px solid var(--n-200);border-radius:99px;padding:0 7px;color:var(--n-600)}
+.hint{font-size:11px;color:var(--brand-hover);font-weight:600}
+.badge{font-size:11px;font-weight:700;padding:3px 7px;border-radius:5px;min-width:52px;text-align:center}
+.badge--shell{background:var(--ok-soft);color:var(--ok)}
+.badge--prompt{background:var(--brand-soft);color:var(--brand-hover)}
+.badge--ghost{visibility:hidden}
+.act{border:0;background:transparent;border-radius:6px;width:32px;height:32px;display:grid;place-items:center;color:var(--n-900)}
+.act--ok{color:var(--ok)}
+.grip{color:var(--n-300);font-size:14px;letter-spacing:-2px;cursor:grab}
+.tip{margin:-2px 10px 8px auto;width:fit-content;background:#303030;color:#fff;font-size:12px;border-radius:6px;padding:6px 8px;max-width:300px;box-shadow:var(--shadow-sm)}
+.tip code{font-family:var(--mono)}
+.toast{margin:8px;display:flex;align-items:center;gap:8px;background:#303030;color:#fff;border-radius:99px;padding:7px 14px;font-size:13px;align-self:center}
+.toast b{font-weight:600}
+.toast button{border:0;background:rgba(255,255,255,.15);color:#fff;border-radius:99px;padding:2px 10px}
+.confirm{margin:6px 10px 8px;border:1px solid var(--n-200);border-radius:10px;background:var(--n-50);padding:10px 12px}
+.confirm code{display:block;font:12.5px/1.4 var(--mono);background:#241F31;color:#F6F5F4;border-radius:6px;padding:8px 10px;margin:6px 0 8px;white-space:pre-wrap;word-break:break-all}
+.confirm label{font-size:12px;color:var(--n-600)}
+.btnrow{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--n-200);background:var(--n-0);border-radius:6px;padding:6px 14px;font-weight:500;color:var(--n-900);white-space:nowrap}
+.btn--accent{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn--danger{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn--flat{border-color:transparent;background:transparent;color:var(--brand-hover)}
+.btn kbd{margin-left:6px;background:rgba(255,255,255,.2);color:inherit;border-color:rgba(255,255,255,.4)}
+.btn:not(.btn--accent) kbd{background:var(--n-100);color:var(--n-600);border-color:var(--n-300)}
+.sortbar{display:flex;align-items:center;gap:8px;padding:6px 8px;border-top:1px solid #EDEDEC}
+.dropdown{flex:1;min-width:0;display:flex;justify-content:space-between;border:1px solid var(--n-200);border-radius:6px;padding:6px 10px;background:var(--n-0)}
+.bottombar{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--n-200);align-items:center}
+.bottombar .btn--accent{flex:1}
+.status{font-size:12px;color:var(--n-500);padding:2px 10px 6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.dot{width:8px;height:8px;border-radius:99px;background:var(--n-300);flex:none}
+.dot--ok{background:var(--ok)}
+.menu{position:absolute;right:8px;top:44px;z-index:30;background:var(--n-0);border:1px solid var(--n-200);border-radius:10px;box-shadow:var(--shadow-lg);padding:6px;width:240px}
+.menu div{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;border-radius:6px}
+.menu hr{border:0;border-top:1px solid var(--n-200);margin:4px 0}
+.menu .sub{color:var(--n-500)}
+.hb{position:relative}
+/* stati vuoti */
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:40px 16px;text-align:center;color:var(--n-500)}
+.empty .big{width:48px;height:48px;color:var(--n-500)}
+.welcome{margin:16px;padding:18px;border:1px solid var(--n-200);border-radius:12px;background:var(--n-0);display:flex;flex-direction:column;gap:10px}
+.welcome h3{margin:0;font-size:16px}
+.welcome ul{margin:0;padding-left:18px;color:var(--n-700)}
+.welcome li{margin:3px 0}
+.state{width:100%;max-width:600px;background:var(--n-0);border:1px solid var(--n-200);border-radius:12px;padding:10px}
+.state__h{font-size:12px;font-weight:700;color:var(--n-600);text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px}
+/* editor */
+.form{padding:16px;display:flex;flex-direction:column;gap:14px;background:var(--n-50)}
+.field{display:flex;flex-direction:column;gap:4px}
+.flabel{font-size:12px;color:var(--n-700)}
+.flabel--h{font-size:14px;font-weight:700;color:var(--n-900)}
+.input{border:1px solid var(--n-200);border-radius:6px;background:var(--n-0);padding:7px 10px;color:var(--n-500);display:flex;gap:6px;align-items:center;flex-wrap:wrap;min-width:0}
+.input--text{color:var(--n-900)}
+.area{min-height:130px;align-items:flex-start;font:13px/1.5 var(--mono)}
+.help{font-size:12px;color:var(--n-500)}
+.help a{color:var(--brand-hover)}
+.radios{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.radio{display:inline-flex;gap:6px;align-items:center}
+.radio i{width:16px;height:16px;border-radius:99px;border:1px solid var(--n-300);background:var(--n-0)}
+.radio i.on{border:5px solid var(--brand)}
+.types{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.type{border:1px solid var(--n-200);border-radius:10px;padding:10px;background:var(--n-0);display:flex;flex-direction:column;gap:2px}
+.type.is-on{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand) inset;background:#F3F8FE}
+.type b{display:flex;gap:6px;align-items:center}
+.type span{font-size:12px;color:var(--n-600)}
+.chipx{background:var(--brand-soft);color:var(--brand-hover);border-radius:99px;padding:1px 8px;font-size:12px;font-weight:600}
+.err{color:var(--bad);font-size:12px}
+.okmsg{color:var(--ok);font-size:12px}
+.intro{background:#F3F8FE;border:1px solid #CFE0F7;border-radius:8px;padding:10px 12px;font-size:13px;color:var(--n-700)}
+.intro b{color:var(--n-900)}
+.after{width:100%;max-width:500px}
+.alert{background:var(--n-0);border-radius:12px;box-shadow:var(--shadow-lg);padding:16px;text-align:center;max-width:340px;margin:0 auto}
+.alert h4{margin:0 0 6px}
+.alert p{margin:0 0 12px;color:var(--n-600);font-size:13px}
+/* proposte di solo stile */
+.f-S2 [data-screen="main"] .row{padding:11px 8px 11px 14px;gap:8px}
+.f-S2 [data-screen="main"] .name{font-weight:700;font-size:14.5px}
+.f-S2 [data-screen="main"] .act{color:var(--n-600)}
+.f-S2 [data-screen="main"] .sec{padding:10px 12px;border-radius:8px;margin:1px 6px}
+.f-M5 [data-screen="main"] .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+
+@container (max-width:760px){
+  .desk{padding:0 0 16px;gap:10px}
+  .desk > .mock-note{margin:10px 12px 0;width:auto}
+  .win{border-radius:0;border-left:0;border-right:0}
+  .body{grid-template-columns:1fr}
+  .secs{border-right:0;border-bottom:1px solid var(--n-200)}
+  .secs__list{display:flex;flex-wrap:wrap;gap:4px;padding:0 8px 6px}
+  .sec{padding:5px 10px;border-radius:99px;border:1px solid var(--n-200)}
+  .secs__add{text-align:left;padding:4px 12px 8px}
+  .popover{left:8px;top:30px}
+  .tip{max-width:none;margin:-2px 8px 8px}
+  .types{grid-template-columns:1fr}
+  .state,.after{border-radius:0}
+  .menu{right:4px;width:220px}
+}
+</style>
+</head>
+<body>
+
+<header class="tool-bar">
+  <h1>Proposte UX <span>· Command Quiver</span></h1>
+  <div class="tabs" role="tablist" aria-label="Schermata">
+    <!-- Una scheda per schermata; data-tab = data-screen della sezione -->
+    <button role="tab" data-tab="main" aria-selected="true">Finestra principale</button>
+    <button role="tab" data-tab="empty" aria-selected="false">Primo avvio</button>
+    <button role="tab" data-tab="editor" aria-selected="false">Nuova voce</button>
+    <button role="tab" data-tab="sync" aria-selected="false">Sincronizzazione</button>
+  </div>
+  <div class="spacer"></div>
+  <div class="ctrl"><span class="ctrl-label">Mostra</span>
+    <div class="seg" id="mode">
+      <button data-mode="sel" aria-pressed="true">La mia selezione</button>
+      <button data-mode="all" aria-pressed="false">Tutte le proposte</button>
+      <button data-mode="none" aria-pressed="false">Com'è oggi</button>
+    </div>
+  </div>
+  <div class="ctrl"><span class="ctrl-label">Vista</span>
+    <div class="seg" id="view">
+      <button data-view="desktop" aria-pressed="true">Desktop</button>
+      <button data-view="mobile" aria-pressed="false">Mobile</button>
+    </div>
+  </div>
+  <label class="ctrl"><input type="checkbox" id="pins" checked><span class="ctrl-label">Etichette</span></label>
+  <button class="tool-btn" id="copy">Copia la selezione</button>
+</header>
+
+<div class="layout">
+  <aside class="panel" aria-label="Proposte">
+    <p class="panel__count"><strong id="sel-count">0</strong><span>proposte tenute</span></p>
+    <p class="panel__intro">Spunta ciò che vuoi tenere: la schermata cambia subito. "Com'è oggi" mostra l'interfaccia attuale, "Tutte le proposte" l'insieme completo. Le etichette blu portano alla proposta. La scelta resta salvata in questo browser.</p>
+    <div class="legend">
+      <span class="chip chip--rapida">Rapida: template, CSS, testi</span>
+      <span class="chip chip--media">Media: anche query o logica</span>
+      <span class="chip chip--ampia">Ampia: funzione nuova</span>
+    </div>
+    <div id="groups"></div>
+  </aside>
+  <main class="stage">
+    <div class="frame" id="frame">
+
+<!-- ===== 4. Schermate ricostruite dagli screenshot reali (GTK4, render del 2026-10-19, dati demo sintetici) ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-14 5M4 12a8 8 0 0 1 14-5M18 3v4h-4M6 21v-4h4"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="i-git" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 8v8M8 6c6 0 10 2 10 4"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></symbol>
+  <symbol id="i-all" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M12 11v6M9 14h6"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></symbol>
+</svg>
+
+<!-- ============ FINESTRA PRINCIPALE ============ -->
+<section class="screen app is-active" data-screen="main" aria-label="Finestra principale">
+ <div class="desk">
+  <p class="mock-note">Finestra principale con 7 voci demo, sezione "Tutti" selezionata, ordinamento "Recenti". La vista Mobile rappresenta la finestra ristretta (l'app è desktop).</p>
+  <div class="win hb">
+   <div class="titlebar">
+    <button class="hbtn hbtn--accent" data-on="S1" data-mark="S1"><svg class="ic"><use href="#i-plus"/></svg>Nuova</button>
+    <div class="titlebar__title">Command Quiver by Bonn</div>
+    <button class="hbtn" data-on="S1" aria-label="Menu"><svg class="ic"><use href="#i-menu"/></svg></button>
+    <div class="wbtns"><span>&#8211;</span><span>&#9633;</span><span>&#10005;</span></div>
+   </div>
+   <div class="searchrow" data-mark="M12">
+    <div class="search"><svg class="ic"><use href="#i-search"/></svg><span data-swap="M12|Cerca in nomi, contenuti e tag">Cerca per nome...</span><kbd data-on="M13" data-mark="M13">Ctrl+F</kbd></div>
+    <button class="sortbtn" data-on="M7" data-mark="M7"><svg class="ic"><use href="#i-sort"/></svg>Più recenti</button>
+   </div>
+   <p class="mock-note" data-on="M15" data-mark="M15" style="margin:0 8px 8px">Esc svuota la ricerca e chiude i popup. Per uscire: la X della finestra o Ctrl+Q.</p>
+   <div class="body">
+    <aside class="secs">
+     <div class="secs__h">SEZIONI</div>
+     <div class="secs__list" data-mark="M10">
+      <div class="sec is-sel" data-mark="M16"><span data-on="M16" style="display:inline-flex"><svg class="ic"><use href="#i-all"/></svg></span><span class="sname">Tutti<span data-off="M10"> (7)</span></span><span class="count" data-on="M10">7</span></div>
+      <div class="sec"><span data-on="M16" style="display:inline-flex"><svg class="ic"><use href="#i-term"/></svg></span><span class="sname"><span data-swap="V3|Comandi shell">Shell Commands</span><span data-off="M10"> (2)</span></span><span class="count" data-on="M10">2</span></div>
+      <div class="sec"><span data-on="M16" style="display:inline-flex"><svg class="ic"><use href="#i-chat"/></svg></span><span class="sname"><span data-swap="V3|Prompt AI">AI Prompts</span><span data-off="M10"> (3)</span></span><span class="count" data-on="M10">3</span></div>
+      <div class="sec" data-mark="M9"><span data-on="M16" style="display:inline-flex"><svg class="ic"><use href="#i-git"/></svg></span><span class="sname">Git<span data-off="M10"> (2)</span></span><button class="dots" data-on="M9" aria-label="Azioni sezione">&#8943;</button><span class="count" data-on="M10">2</span></div>
+      <div class="sec"><span data-on="M16" style="display:inline-flex"><svg class="ic"><use href="#i-folder"/></svg></span><span class="sname">Generale<span data-off="M10"> (0)</span></span><span class="count" data-on="M10">0</span>
+      </div>
+     </div>
+     <div class="secs__add">+ Sezione</div>
+    </aside>
+    <div class="list" data-mark="S2">
+     <div class="toast" data-on="M3" data-mark="M3"><svg class="ic"><use href="#i-check"/></svg>Copiato: <b>Log ultimi 10 commit</b></div>
+     <p class="mock-note" data-on="M8" style="margin:8px 8px 0">Nell'ordinamento Personale le voci si trascinano dalla maniglia; oggi ci sono le frecce su/giù.</p>
+     <div class="list__rows" data-mark="M2">
+      <div class="row" data-mark="M6"><span class="grip" data-on="M8" data-mark="M8">&#8942;&#8942;</span>
+       <div class="row__main"><span class="name">Aggiorna sistema</span><code class="preview" data-on="M2">sudo apt update &amp;&amp; sudo apt upgrade -y</code><span class="tags" data-on="M14" data-mark="M14"><span class="tag">sistema</span><span class="tag">apt</span></span></div>
+       <span class="badge badge--shell" data-mark="L1"><span data-swap="L1|Comando">SHELL</span></span>
+       <span class="act"><svg class="ic"><use href="#i-edit"/></svg></span><span class="act"><svg class="ic"><use href="#i-copy"/></svg></span><span class="act"><svg class="ic ic--fill"><use href="#i-play"/></svg></span>
+      </div>
+      <div class="confirm" data-on="M6"><b>Eseguire nel terminale?</b><code>sudo apt update &amp;&amp; sudo apt upgrade -y</code><div class="btnrow"><label><input type="checkbox"> Non chiedere più per questa voce</label><span class="btn">Annulla</span><span class="btn btn--accent">Esegui</span></div></div>
+      <div class="row" data-mark="M4"><span class="grip" data-on="M8">&#8942;&#8942;</span>
+       <div class="row__main"><span class="name">Spazio disco per cartella</span><code class="preview" data-on="M2">du -sh * | sort -h</code><span class="hint" data-on="M4">Clic sulla riga per copiare</span><span class="tags" data-on="M14"><span class="tag">disco</span></span></div>
+       <span class="badge badge--shell"><span data-swap="L1|Comando">SHELL</span></span>
+       <span class="act"><svg class="ic"><use href="#i-edit"/></svg></span><span class="act"><svg class="ic"><use href="#i-copy"/></svg></span><span class="act"><svg class="ic ic--fill"><use href="#i-play"/></svg></span>
+      </div>
+      <div class="row"><span class="grip" data-on="M8">&#8942;&#8942;</span>
+       <div class="row__main"><span class="name">Log ultimi 10 commit</span><code class="preview" data-on="M2">git log --oneline -10</code><span class="tags" data-on="M14"><span class="tag">git</span></span></div>
+       <span class="badge badge--shell"><span data-swap="L1|Comando">SHELL</span></span>
+       <span class="act"><svg class="ic"><use href="#i-edit"/></svg></span><span class="act act--ok"><svg class="ic"><use href="#i-check"/></svg></span><span class="act"><svg class="ic ic--fill"><use href="#i-play"/></svg></span>
+      </div>
+      <div class="row"><span class="grip" data-on="M8">&#8942;&#8942;</span>
+       <div class="row__main"><span class="name">Annulla ultimo commit locale</span><code class="preview" data-on="M2">git reset --soft HEAD~1</code><span class="tags" data-on="M14"><span class="tag">git</span></span></div>
+       <span class="badge badge--shell"><span data-swap="L1|Comando">SHELL</span></span>
+       <span class="act"><svg class="ic"><use href="#i-edit"/></svg></span><span class="act"><svg class="ic"><use href="#i-copy"/></svg></span><span class="act"><svg class="ic ic--fill"><use href="#i-play"/></svg></span>
+      </div>
+      <div class="row"><span class="grip" data-on="M8">&#8942;&#8942;</span>
+       <div class="row__main"><span class="name">Riassumi email in 3 punti</span><code class="preview" data-on="M2">Riassumi questa email in 3 punti chiave...</code><span class="tags" data-on="M14"><span class="tag">email</span></span></div>
+       <span class="badge badge--prompt" data-on="M1" data-mark="M1"><span data-swap="L1|Prompt">PROMPT</span></span>
+       <span class="act"><svg class="ic"><use href="#i-edit"/></svg></span><span class="act"><svg class="ic"><use href="#i-copy"/></svg></span>
+      </div>
+      <div class="row" data-mark="M5"><span class="grip" data-on="M8">&#8942;&#8942;</span>
+       <div class="row__main"><span class="name" data-swap="M5|Revisione codice Python severa e completa con suggerimenti">Revisione codice Python severa e complet…</span><code class="preview" data-on="M2">Agisci come revisore...</code><span class="tags" data-on="M14"><span class="tag">python</span><span class="tag">review</span></span></div>
+       <span class="badge badge--prompt" data-on="M1"><span data-swap="L1|Prompt">PROMPT</span></span>
+       <span class="act"><svg class="ic"><use href="#i-edit"/></svg></span><span class="act"><svg class="ic"><use href="#i-copy"/></svg></span>
+      </div>
+      <div class="tip" data-on="M5">Al passaggio del mouse: nome intero e inizio del contenuto<br><code>Agisci come revisore...</code></div>
+      <div class="row"><span class="grip" data-on="M8">&#8942;&#8942;</span>
+       <div class="row__main"><span class="name">Traduci in inglese formale</span><code class="preview" data-on="M2">Traduci il testo seguente...</code><span class="tags" data-on="M14"><span class="tag">traduzione</span></span></div>
+       <span class="badge badge--prompt" data-on="M1"><span data-swap="L1|Prompt">PROMPT</span></span>
+       <span class="act"><svg class="ic"><use href="#i-edit"/></svg></span><span class="act"><svg class="ic"><use href="#i-copy"/></svg></span>
+      </div>
+     </div>
+     <div class="sortbar" data-off="M7"><span>Ordina:</span><span class="dropdown"><span>Recenti &#8595;</span><span>&#9662;</span></span></div>
+    </div>
+   </div>
+   <div class="bottombar" data-off="S1">
+    <span class="btn btn--accent">+ Nuova voce<kbd data-on="M13">Ctrl+N</kbd></span>
+    <span class="btn" data-on="I1" data-mark="I1"><svg class="ic"><use href="#i-swap"/></svg> Importa/Esporta</span>
+    <span class="btn">Italiano &#9662;</span>
+    <span class="btn" aria-label="Sincronizzazione"><svg class="ic"><use href="#i-sync"/></svg></span>
+   </div>
+   <div class="status" data-mark="S3">
+    <span data-off="S3">Sync off</span>
+    <span data-on="S3"><span class="dot"></span></span><span data-on="S3">Salvato solo su questo computer ·</span><a href="#" class="btn--flat" data-on="S3" data-goto="sync">Sincronizza tra dispositivi</a>
+   </div>
+  </div>
+  <div class="state" data-mark="M11">
+   <p class="state__h">Tasto destro sulla sezione "Generale"</p>
+   <div class="popover" style="position:static;box-shadow:none;width:fit-content"><div>Rinomina</div><div data-off="M11">Elimina</div><div class="is-dis" data-on="M11">Elimina: non disponibile, è la sezione predefinita</div></div>
+   <p class="help" data-off="M11" style="margin:4px 10px">Oggi "Elimina" chiede conferma, poi la sezione resta dov'è senza spiegazioni.</p>
+  </div>
+  <div class="state" data-on="S1">
+   <p class="state__h">Menu &#9776; aperto (sostituisce la barra inferiore)</p>
+   <div class="menu" style="position:static;width:auto;box-shadow:none;border:0">
+    <div><span>Lingua</span><span class="sub">Italiano &#8250;</span></div>
+    <div><span>Sincronizzazione…</span><span class="sub">off</span></div>
+    <div data-on="I1" data-mark="I1"><span>Importa / Esporta…</span></div>
+    <hr>
+    <div data-on="M13"><span>Scorciatoie da tastiera</span><kbd>Ctrl+?</kbd></div>
+    <div><span>Informazioni</span></div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ============ PRIMO AVVIO E STATI VUOTI ============ -->
+<section class="screen app" data-screen="empty" aria-label="Primo avvio">
+ <div class="desk">
+  <p class="mock-note">Primo avvio: database nuovo, sezioni create in automatico, nessuna voce. È la prima cosa che vede un utente nuovo.</p>
+  <div class="win">
+   <div class="titlebar"><div class="titlebar__title">Command Quiver by Bonn</div><div class="wbtns"><span>&#8211;</span><span>&#9633;</span><span>&#10005;</span></div></div>
+   <div class="searchrow"><div class="search"><svg class="ic"><use href="#i-search"/></svg><span>Cerca per nome...</span></div></div>
+   <div class="body">
+    <aside class="secs">
+     <div class="secs__h">SEZIONI</div>
+     <div class="secs__list" data-mark="V3">
+      <div class="sec is-sel"><span class="sname">Tutti (0)</span></div>
+      <div class="sec"><span class="sname"><span data-swap="V3|Comandi shell">Shell Commands</span> (0)</span></div>
+      <div class="sec"><span class="sname"><span data-swap="V3|Prompt AI">AI Prompts</span> (0)</span></div>
+      <div class="sec"><span class="sname">Git (0)</span></div>
+      <div class="sec"><span class="sname">Generale (0)</span></div>
+     </div>
+     <div class="secs__add">+ Sezione</div>
+    </aside>
+    <div class="list">
+     <div class="empty" data-off="V1" data-mark="V1">
+      <svg class="ic big"><use href="#i-doc"/></svg>
+      <div>Nessuna voce trovata</div>
+      <small>Premi "+ Nuova voce" per iniziare</small>
+      <span class="btn" data-on="V2" data-mark="V2">Aggiungi 6 esempi</span>
+     </div>
+     <div class="welcome" data-on="V1" data-mark="V1">
+      <h3>Tieni a portata di mano i tuoi prompt e comandi</h3>
+      <ul>
+       <li><b>Prompt AI</b>: un clic e il testo è negli appunti, pronto da incollare.</li>
+       <li><b>Comandi</b>: si copiano, oppure si lanciano nel terminale con &#9654;.</li>
+       <li>Le <b>sezioni</b> a sinistra li tengono in ordine; la ricerca li trova tutti.</li>
+      </ul>
+      <div class="btnrow" style="justify-content:flex-start"><span class="btn btn--accent">Crea la prima voce</span><span class="btn" data-on="V2" data-mark="V2">Prova con 6 esempi</span></div>
+      <small class="help" data-on="V2">Gli esempi si eliminano come le altre voci.</small>
+     </div>
+    </div>
+   </div>
+   <div class="bottombar"><span class="btn btn--accent">+ Nuova voce</span><span class="btn">Italiano &#9662;</span><span class="btn"><svg class="ic"><use href="#i-sync"/></svg></span></div>
+   <div class="status">Sync off</div>
+  </div>
+
+  <div class="state" data-mark="V4">
+   <p class="state__h">Stato: sezione "Git" selezionata, ancora vuota</p>
+   <div class="empty" style="padding:16px" data-off="V4"><div>Nessuna voce trovata</div><small>Premi "+ Nuova voce" per iniziare</small></div>
+   <div class="empty" style="padding:16px" data-on="V4"><div><b style="color:var(--n-900)">Ancora niente in Git</b></div><small>Le voci che crei qui restano raggruppate in questa sezione.</small><span class="btn btn--accent">Aggiungi in Git</span></div>
+  </div>
+
+  <div class="state" data-mark="V5">
+   <p class="state__h">Stato: ricerca "docker" nella sezione AI Prompts, nessun risultato</p>
+   <div class="empty" style="padding:16px" data-off="V5"><div>Nessuna voce trovata</div><small>Premi "+ Nuova voce" per iniziare</small></div>
+   <div class="empty" style="padding:16px" data-on="V5"><div><b style="color:var(--n-900)">Nessun risultato per «docker» in AI Prompts</b></div><small>La ricerca guarda solo nella sezione selezionata.</small><div class="btnrow" style="justify-content:center"><span class="btn btn--accent">Cerca in tutte le sezioni</span><span class="btn">Cancella ricerca</span></div></div>
+  </div>
+ </div>
+</section>
+
+<!-- ============ EDITOR VOCE ============ -->
+<section class="screen app" data-screen="editor" aria-label="Nuova voce">
+ <div class="desk">
+  <p class="mock-note">Finestra "Nuova voce" aperta con "+ Nuova voce" mentre è selezionata la sezione AI Prompts.</p>
+  <div class="win win--dlg">
+   <div class="titlebar"><div class="titlebar__title">Nuova voce</div><div class="wbtns"><span>&#10005;</span></div></div>
+   <div class="form">
+    <div class="field" data-mark="E3">
+     <span class="flabel" data-swap="E3|Nome (facoltativo)">Nome</span>
+     <span class="input">Nome della voce...</span>
+     <span class="help" data-on="E3">Se lo lasci vuoto, usiamo la prima riga del contenuto.</span>
+    </div>
+    <div data-mark="E1">
+     <div class="radios" data-off="E1"><span>Tipo:</span><span class="radio"><i class="on"></i>Prompt AI</span><span class="radio"><i></i>Comando Shell</span></div>
+     <div class="types" data-on="E1">
+      <div class="type is-on"><b><svg class="ic"><use href="#i-chat"/></svg>Prompt AI</b><span>Testo da incollare in ChatGPT, Claude e simili. Si copia.</span></div>
+      <div class="type"><b><svg class="ic"><use href="#i-term"/></svg>Comando</b><span>Riga da terminale. Si copia o si esegue con &#9654;.</span></div>
+     </div>
+    </div>
+    <div class="field" data-mark="E2">
+     <span class="flabel">Sezione</span>
+     <span class="dropdown"><span><span data-off="E2"><span data-swap="V3|Comandi shell">Shell Commands</span></span><span data-on="E2"><span data-swap="V3|Prompt AI">AI Prompts</span></span></span><span>&#9662;</span></span>
+    </div>
+    <div class="field" data-mark="E4">
+     <span class="flabel">Contenuto</span>
+     <span class="input area"><span data-on="E4">Es. "Riassumi il testo seguente in 5 punti, con tono neutro:"</span></span>
+    </div>
+    <div class="field" data-mark="E5">
+     <span class="flabel" data-swap="E5|Tag">Tag (separati da virgola)</span>
+     <span class="input" data-off="E5">es: git, deploy, backup</span>
+     <span class="input input--text" data-on="E5"><span class="chipx">riassunto &#215;</span>scrivi e premi Invio…</span>
+     <span class="help" data-on="E5">Già usati: email · python · review · traduzione</span>
+    </div>
+    <div class="btnrow" data-mark="E6"><span class="btn">Annulla</span><span class="btn">Salva e Copia<kbd data-on="E6">Ctrl+Invio</kbd></span><span class="btn btn--accent">Salva<kbd data-on="E6">Ctrl+S</kbd></span></div>
+   </div>
+  </div>
+  <div class="state after" data-mark="E7">
+   <p class="state__h">Dopo "Elimina" su una voce esistente</p>
+   <div class="alert" data-off="E7"><h4>Eliminare questa voce?</h4><p>La voce "Traduci in inglese formale" verrà eliminata definitivamente.</p><div class="btnrow" style="justify-content:center"><span class="btn">Annulla</span><span class="btn">Elimina</span></div></div>
+   <div data-on="E7" style="display:flex;justify-content:center"><div class="toast">Voce "Traduci in inglese formale" eliminata <button type="button">Annulla</button></div></div>
+  </div>
+ </div>
+</section>
+
+<!-- ============ SINCRONIZZAZIONE ============ -->
+<section class="screen app" data-screen="sync" aria-label="Sincronizzazione">
+ <div class="desk">
+  <p class="mock-note">Finestra "Sincronizzazione GitHub", aperta dal pulsante &#8635; in basso a destra. Stato mostrato: dopo "Testa connessione" con un token scaduto.</p>
+  <div class="win win--sync">
+   <div class="titlebar"><div class="titlebar__title">Sincronizzazione GitHub</div><div class="wbtns"><span>&#10005;</span></div></div>
+   <div class="form">
+    <div class="intro" data-on="Y1" data-mark="Y1"><b>Facoltativa.</b> Copia le tue voci in un repository GitHub privato, così le ritrovi su un altro computer. Senza, tutto resta solo qui.</div>
+    <div data-off="Y5" data-mark="Y5">
+     <div class="field"><span class="flabel flabel--h">Proprietario repo</span><span class="input input--text">mrossi</span></div>
+     <div class="field" style="margin-top:12px"><span class="flabel flabel--h">Nome repo</span><span class="input input--text">command-quiver-sync</span></div>
+    </div>
+    <div class="field" data-on="Y5" data-mark="Y5"><span class="flabel flabel--h">Repository</span><span class="input input--text">mrossi/command-quiver-sync</span><span class="help">Accetta anche l'indirizzo copiato da GitHub.</span></div>
+    <div class="field" data-mark="Y2"><span class="flabel flabel--h">Token GitHub</span><span class="input input--text">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</span>
+     <span class="help" data-on="Y2"><a href="#">Crea un token su GitHub</a>: tipo "fine-grained", solo questo repository, permesso Contents in lettura e scrittura.</span></div>
+    <div data-mark="Y3"><span class="err" data-off="Y3">Connessione fallita</span><span class="err" data-on="Y3">GitHub rifiuta il token: è scaduto o non valido. Creane uno nuovo e incollalo qui.</span></div>
+    <div class="help" data-on="Y6" data-mark="Y6">Il repository non esiste ancora? <a href="#">Crealo privato per me</a></div>
+    <div class="btnrow" style="justify-content:space-between" data-mark="L2"><span class="btn">Testa connessione</span><span class="btn btn--accent" data-swap="L2|Attiva sincronizzazione">Attiva sync</span></div>
+   </div>
+  </div>
+  <div class="state" data-mark="Y4">
+   <p class="state__h">Stessa finestra con la sincronizzazione già attiva</p>
+   <div class="form" style="padding:6px;background:transparent">
+    <span class="help" data-off="Y4">Ultimo sync: 2026-10-19 08:12:44</span>
+    <span class="help" data-on="Y4"><span class="okmsg">&#10003;</span> Ultima sincronizzazione: 5 minuti fa</span>
+    <div class="btnrow" style="justify-content:space-between"><span class="btn" data-off="Y4">Testa connessione</span><span class="btn btn--accent" data-on="Y4"><svg class="ic"><use href="#i-sync"/></svg> Sincronizza ora</span><span class="btn btn--danger" data-swap="L2|Disattiva sincronizzazione">Disattiva sync</span></div>
+   </div>
+  </div>
+ </div>
+</section>
+
+    </div>
+  </main>
+</div>
+
+<dialog id="copy-dialog" role="dialog" aria-modal="true" aria-labelledby="copy-title">
+  <h2 id="copy-title">La tua selezione</h2>
+  <p id="copy-status">Testo pronto da incollare in chat.</p>
+  <textarea id="copy-text" readonly></textarea>
+  <div class="dialog-actions"><button class="tool-btn tool-btn--ghost" id="copy-close">Chiudi</button><button class="tool-btn" id="copy-again">Copia</button></div>
+</dialog>
+
+<script>
+/* ===== 5. Dati ===== */
+const PRODUCT = "Command Quiver";
+const GROUPS = {main: "Finestra principale", empty: "Primo avvio e stati vuoti", editor: "Nuova voce / Modifica", sync: "Sincronizzazione", x: "Trasversali (tutte le schermate)"};
+const PROPOSALS = [
+  {id: "M1", g: "main", t: "Badge PROMPT di nuovo visibile", w: "Nel render reale le voci prompt non hanno badge: lo stile usa @accent_color, che il tema GTK predefinito non definisce, quindi il badge è trasparente. Si vede solo SHELL.", e: "rapida", done: true},
+  {id: "M2", g: "main", t: "Anteprima del contenuto sotto il nome", w: "La riga mostra solo il nome: per sapere cosa copierai devi aprire la modifica. Una riga in grigio monospace con l'inizio del comando o del prompt.", e: "rapida", done: true},
+  {id: "M3", g: "main", t: "Conferma di copia leggibile", w: "Oggi l'unico segnale è l'icona che diventa una spunta per 1,5 secondi. Un avviso in alto con il nome della voce copiata.", e: "media", done: true},
+  {id: "M4", g: "main", t: "Dire che il clic sulla riga copia", w: "Cliccare la riga copia il contenuto, ma nulla lo dice: un utente nuovo cerca il pulsante. Suggerimento al passaggio del mouse.", e: "rapida", done: true},
+  {id: "M5", g: "main", t: "Nome intero, troncato solo se manca spazio", w: "Il nome è tagliato a 40 caratteri fissi anche con la finestra larga ('severa e complet…'). Taglio sulla larghezza reale e tooltip con nome e contenuto.", e: "rapida", done: true},
+  {id: "M6", g: "main", t: "Conferma prima di eseguire un comando", w: "▶ lancia subito il comando, anche 'sudo apt upgrade -y' o 'git reset'. Un clic per sbaglio esegue. Riquadro con il comando e Esegui, con 'non chiedere più' per voce.", e: "media", done: true},
+  {id: "M7", g: "main", t: "Ordinamento in alto, con parole chiare", w: "Il menu 'Ordina: Recenti ↓' sta in fondo alla lista, sotto le voci, e le frecce non si capiscono. Pulsante accanto alla ricerca: 'Più recenti', 'Nome A-Z', 'Più usati'.", e: "rapida", done: true},
+  {id: "M8", g: "main", t: "Riordino per trascinamento", w: "Nell'ordine Personale si sposta una voce solo una posizione alla volta con le frecce. Maniglia da trascinare.", e: "ampia", note: "il README promette già 'drag-and-drop reordering', che nel codice non esiste", done: true},
+  {id: "M9", g: "main", t: "Azioni della sezione visibili (⋯)", w: "Rinomina ed Elimina sezione esistono solo col tasto destro: nessun indizio le rende trovabili. Pulsante ⋯ al passaggio del mouse.", e: "rapida", done: true},
+  {id: "M10", g: "main", t: "Conteggi come numeri a destra", w: "'Shell Commands (2)' mescola nome e conteggio e li fa scorrere insieme. Numero allineato a destra, in una pastiglia discreta.", e: "rapida", done: true},
+  {id: "M11", g: "main", t: "Generale: niente 'Elimina' che non elimina", w: "Il menu di 'Generale' offre Elimina, chiede conferma e poi non fa nulla (il database lo rifiuta senza dirlo). Voce disattivata con il motivo.", e: "rapida", done: true},
+  {id: "M12", g: "main", t: "Ricerca che dice dove cerca", w: "Il campo dice 'Cerca per nome...', ma la ricerca guarda anche contenuto e tag: chi cerca un pezzo di comando pensa di non poterlo fare.", e: "rapida", done: true},
+  {id: "M13", g: "main", t: "Scorciatoie da tastiera essenziali", w: "Mancano Ctrl+F (vai alla ricerca), Ctrl+N (nuova voce), Invio (copia la prima voce trovata), frecce per scorrere. Per un'app da richiamare al volo è il percorso più veloce.", e: "media", done: true},
+  {id: "M14", g: "main", t: "Tag visibili e cliccabili", w: "I tag si inseriscono nell'editor ma non compaiono da nessuna parte. Chip sotto il nome; un clic filtra per quel tag.", e: "media", done: true},
+  {id: "M15", g: "main", t: "Esc svuota la ricerca, non chiude l'app", w: "Esc chiude la finestra e termina l'app: chi lo preme per annullare una ricerca o un popup si ritrova senza app.", e: "rapida", note: "CLAUDE.md: 'Chiusura finestra (X o Escape) = termina l'app'", done: true},
+  {id: "M16", g: "main", t: "Icone delle sezioni", w: "Il database salva già un'icona per sezione (colonna icon) ma l'interfaccia non la mostra. Aiuta a riconoscere le sezioni a colpo d'occhio.", e: "rapida", note: "alcune icone salvate (vcs-commit, format-text-bold) potrebbero non esistere nel tema: servono nomi verificati", done: true},
+  {id: "V1", g: "empty", t: "Primo avvio che spiega l'app in 3 righe", w: "Il primo schermo dice 'Nessuna voce trovata', come se una ricerca fosse fallita. Breve spiegazione di prompt, comandi e sezioni, e un pulsante 'Crea la prima voce'.", e: "rapida", done: true},
+  {id: "V2", g: "empty", t: "Voci di esempio con un clic", w: "Un utente nuovo deve inventarsi una voce prima di capire come funziona. 6 esempi (3 comandi, 3 prompt) da provare e poi eliminare.", e: "media", done: true},
+  {id: "V3", g: "empty", t: "Sezioni iniziali nella lingua dell'interfaccia", w: "Con l'interfaccia in italiano le sezioni create al primo avvio sono 'Shell Commands', 'AI Prompts' accanto a 'Generale'. Nomi nella lingua scelta.", e: "media", note: "vale solo per i database nuovi; quelli esistenti e sincronizzati restano come sono", done: true},
+  {id: "V4", g: "empty", t: "Sezione vuota con invito ad aggiungere lì", w: "Una sezione vuota mostra lo stesso 'Nessuna voce trovata' del primo avvio. Messaggio con il nome della sezione e 'Aggiungi in Git'.", e: "rapida", done: true},
+  {id: "V5", g: "empty", t: "Ricerca senza risultati: eco e vie d'uscita", w: "La ricerca guarda solo la sezione selezionata e, se non trova nulla, mostra di nuovo 'Premi + Nuova voce'. Eco della parola cercata, 'Cerca in tutte le sezioni', 'Cancella ricerca'.", e: "media", done: true},
+  {id: "E1", g: "editor", t: "Tipo spiegato: cosa succede con ciascuno", w: "'Tipo: Prompt AI / Comando Shell' non dice la differenza pratica, cioè che solo i comandi si possono eseguire. Due schede con una riga di spiegazione.", e: "rapida", done: true},
+  {id: "E2", g: "editor", t: "Sezione preimpostata su quella aperta", w: "Creando una voce da 'AI Prompts' l'editor propone 'Shell Commands' (la prima della lista): la voce finisce nella sezione sbagliata se non la si cambia.", e: "rapida", done: true},
+  {id: "E3", g: "editor", t: "Nome facoltativo, preso dalla prima riga", w: "Il nome è obbligatorio e va inventato prima di incollare. Se resta vuoto si usa la prima riga del contenuto: incolla e salva.", e: "media", done: true},
+  {id: "E4", g: "editor", t: "Esempio dentro il campo Contenuto", w: "Il campo più importante è un riquadro vuoto senza indicazioni. Testo d'esempio che cambia col tipo scelto.", e: "rapida", done: true},
+  {id: "E5", g: "editor", t: "Tag come etichette, con suggerimenti", w: "'Tag (separati da virgola)' chiede di ricordare come li hai scritti l'ultima volta. Etichette che si aggiungono con Invio, con i tag già usati proposti sotto.", e: "media", done: true},
+  {id: "E6", g: "editor", t: "Scorciatoie scritte sui pulsanti", w: "Ctrl+S e Ctrl+Invio funzionano già, ma sono documentati solo nel codice. Indicazione accanto a Salva e Salva e Copia.", e: "rapida", done: true},
+  {id: "E7", g: "editor", t: "Eliminazione con Annulla invece di conferma", w: "Ogni eliminazione apre un avviso 'definitivamente'. Un avviso 'Eliminata, Annulla' per qualche secondo è più rapido e permette di rimediare.", e: "ampia", note: "va coordinato con le tombstone della sincronizzazione: l'annullamento deve avvenire prima del sync", done: true},
+  {id: "Y1", g: "sync", t: "Una frase su cos'è e che è facoltativa", w: "La finestra parte con 'Proprietario repo' e 'Token GitHub' senza dire a cosa servono: un utente nuovo può pensare che l'app non funzioni senza.", e: "rapida", done: true},
+  {id: "Y2", g: "sync", t: "Link e istruzioni per creare il token", w: "Il campo chiede un token 'ghp_...' ma non dice dove si crea né quali permessi servono. Link a GitHub e permesso minimo richiesto.", e: "rapida", done: true},
+  {id: "Y3", g: "sync", t: "Errore che dice cosa correggere", w: "Campi vuoti, token scaduto e repository inesistente danno tutti 'Connessione fallita'. Il client riceve già il codice HTTP: messaggio per ciascun caso.", e: "media", done: true},
+  {id: "Y4", g: "sync", t: "'Sincronizza ora' e tempo relativo", w: "Non c'è modo di forzare una sincronizzazione (la traduzione 'Sincronizza ora' esiste ma non è usata) e l'ultima è un orario ISO al secondo. Pulsante e '5 minuti fa'.", e: "media", done: true},
+  {id: "Y5", g: "sync", t: "Un solo campo 'utente/repository'", w: "Proprietario e nome sono due campi separati; chi copia l'indirizzo da GitHub deve spezzarlo a mano. Un campo che accetta 'utente/repo' o l'URL.", e: "rapida", done: true},
+  {id: "Y6", g: "sync", t: "Creazione del repository privato dall'app", w: "Bisogna prima creare a mano un repository privato su GitHub. Un pulsante lo crea con il token fornito.", e: "ampia", note: "richiede un permesso del token più ampio (creazione repository)"},
+  {id: "S1", g: "x", t: "Barra del titolo GNOME con + e menu", w: "La barra in basso mescola l'azione principale con lingua e sincronizzazione, che si usano una volta. '+ Nuova' in alto a sinistra, lingua, sync e altro in un menu ☰, come le app GNOME.", e: "media", done: true},
+  {id: "S2", g: "x", t: "Righe più ariose e gerarchia più netta", w: "Righe da 40 px con nome, badge e quattro icone dello stesso peso: l'occhio non sa dove guardare. Più spazio verticale, nome più marcato, icone secondarie più leggere.", e: "rapida", done: true},
+  {id: "S3", g: "x", t: "Stato della sincronizzazione vero e comprensibile", w: "'Sync off' è gergo; 'Sync OK' compare appena si attiva, prima di qualsiasi sincronizzazione, e il risultato dice sempre '0 inviate' (entries_pushed non è mai calcolato). Testo in parole, solo dopo un esito reale, cliccabile.", e: "media", done: true},
+  {id: "L1", g: "x", t: "Badge 'Comando' e 'Prompt' invece di SHELL", w: "'SHELL' in maiuscolo è gergo per chi non usa il terminale tutti i giorni. Stesse parole della finestra di modifica.", e: "rapida", done: true},
+  {id: "L2", g: "x", t: "'Sincronizzazione' al posto di 'sync'", w: "L'interfaccia è in italiano ma i pulsanti dicono 'Attiva sync', 'Disattiva sync', 'Ultimo sync'. Parole italiane intere.", e: "rapida", done: true},
+  {id: "I1", g: "x", t: "Importa ed esporta le voci da file", w: "Il codice ha già export_all e import_entries, ma l'interfaccia non li espone: senza GitHub non c'è modo di fare un backup o spostare la libreria.", e: "media", done: true}
+];
+
+/* ===== Engine: non modificare sotto questa riga ===== */
+const EFFORT = {rapida: "Rapida", media: "Media", ampia: "Ampia"};
+const KEY = "ux-improver:" + PRODUCT;
+function load(){ try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch(e){ return null; } }
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(ui)); } catch(e){} }
+const saved = load();
+const ui = {
+  sel: Object.assign(Object.fromEntries(PROPOSALS.map(p => [p.id, true])), saved && saved.sel || {}),
+  mode: saved && saved.mode || "sel",
+  tab: saved && saved.tab || document.querySelector("[role=tab]").dataset.tab,
+  view: saved && saved.view || "desktop",
+  pins: saved ? saved.pins !== false : true
+};
+if (!document.querySelector(`[data-screen="${ui.tab}"]`)) ui.tab = document.querySelector("[role=tab]").dataset.tab;
+const frame = document.getElementById("frame");
+const isOn = id => ui.mode === "all" ? true : ui.mode === "none" ? false : !!ui.sel[id];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+function apply(){
+  document.querySelectorAll("[data-on]").forEach(el => { el.hidden = !el.dataset.on.split(" ").every(isOn); });
+  document.querySelectorAll("[data-off]").forEach(el => { el.hidden = el.dataset.off.split(" ").some(isOn); });
+  document.querySelectorAll("[data-swap]").forEach(el => {
+    if (el.dataset.orig === undefined) el.dataset.orig = el.textContent;
+    const cut = el.dataset.swap.indexOf("|");
+    el.textContent = isOn(el.dataset.swap.slice(0, cut)) ? el.dataset.swap.slice(cut + 1) : el.dataset.orig;
+  });
+  PROPOSALS.forEach(p => frame.classList.toggle("f-" + p.id, isOn(p.id)));
+  document.getElementById("sel-count").textContent = PROPOSALS.filter(p => ui.sel[p.id]).length + " / " + PROPOSALS.length;
+  document.querySelectorAll("#mode button").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === ui.mode));
+  document.querySelectorAll("#view button").forEach(b => b.setAttribute("aria-pressed", b.dataset.view === ui.view));
+  document.querySelectorAll("[role=tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === ui.tab));
+  document.querySelectorAll(".screen").forEach(s => s.classList.toggle("is-active", s.dataset.screen === ui.tab));
+  frame.classList.toggle("is-mobile", ui.view === "mobile");
+  frame.classList.toggle("pins-off", !ui.pins);
+  document.getElementById("pins").checked = ui.pins;
+  renderPanel();
+  save();
+  document.dispatchEvent(new CustomEvent("ux:applied"));
+}
+
+function renderPanel(){
+  const wrap = document.getElementById("groups");
+  const order = [ui.tab, "x"].filter((g, i, a) => GROUPS[g] && a.indexOf(g) === i);
+  wrap.innerHTML = "";
+  order.forEach(g => {
+    const items = PROPOSALS.filter(p => p.g === g);
+    if (!items.length) return;
+    const sec = document.createElement("section");
+    sec.className = "group";
+    const allOn = items.every(p => ui.sel[p.id]);
+    sec.innerHTML = `<div class="group__head"><h2 class="group__title">${esc(GROUPS[g])}</h2><button class="group__all" data-group="${g}">${allOn ? "Togli tutte" : "Tieni tutte"}</button></div>`;
+    items.forEach(p => {
+      const div = document.createElement("div");
+      div.className = "prop";
+      div.id = "prop-" + p.id;
+      div.innerHTML = `<input type="checkbox" id="cb-${p.id}" ${ui.sel[p.id] ? "checked" : ""} aria-describedby="why-${p.id}">
+        <div class="prop__head"><button class="prop__code" data-show="${p.id}" title="Mostra sulla schermata">${p.id}</button><label class="prop__title" for="cb-${p.id}">${esc(p.t)}</label></div>
+        <p class="prop__why" id="why-${p.id}">${esc(p.w)}</p>
+        <div class="prop__tags"><span class="chip chip--${p.e}">${EFFORT[p.e]}</span>${p.src ? `<span class="chip chip--nota">${esc(p.src)}</span>` : ""}${p.note ? `<span class="chip chip--nota" title="${esc(p.note)}">da valutare: ${esc(p.note)}</span>` : ""}${p.done ? '<span class="chip chip--fatta">applicata</span>' : ""}</div>`;
+      sec.appendChild(div);
+    });
+    wrap.appendChild(sec);
+  });
+  const others = Object.keys(GROUPS).filter(g => !order.includes(g));
+  if (others.length){
+    const rest = document.createElement("p");
+    rest.className = "panel__intro";
+    rest.textContent = "Altre schermate: " + others.map(g => `${GROUPS[g]} ${PROPOSALS.filter(p => p.g === g && ui.sel[p.id]).length}/${PROPOSALS.filter(p => p.g === g).length}`).join(" · ");
+    wrap.appendChild(rest);
+  }
+}
+
+function show(id){
+  const p = PROPOSALS.find(x => x.id === id);
+  if (p && p.g !== "x" && p.g !== ui.tab && GROUPS[p.g]){ ui.tab = p.g; apply(); }
+  const target = [...document.querySelectorAll(`.screen.is-active [data-mark="${id}"]`)].find(el => el.offsetParent !== null);
+  if (!target) return;
+  target.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center"});
+  target.classList.remove("flash-target"); void target.offsetWidth; target.classList.add("flash-target");
+}
+
+function addPins(){
+  document.querySelectorAll("[data-mark]").forEach(el => {
+    const b = document.createElement("button");
+    b.className = "pin"; b.type = "button"; b.textContent = el.dataset.mark;
+    b.setAttribute("aria-label", "Proposta " + el.dataset.mark);
+    b.addEventListener("click", e => {
+      e.preventDefault(); e.stopPropagation();
+      const card = document.getElementById("prop-" + el.dataset.mark);
+      if (!card) return;
+      card.scrollIntoView({behavior: "smooth", block: "center"});
+      card.classList.add("is-flash"); setTimeout(() => card.classList.remove("is-flash"), 1400);
+    });
+    el.appendChild(b);
+  });
+}
+
+function selectionText(){
+  const line = p => `${p.id} ${p.t} [${EFFORT[p.e]}]`;
+  const keep = PROPOSALS.filter(p => ui.sel[p.id]);
+  const drop = PROPOSALS.filter(p => !ui.sel[p.id]);
+  return `Proposte UX ${PRODUCT}: ${keep.length} tenute su ${PROPOSALS.length}\n\nTENERE\n${keep.map(line).join("\n") || "-"}\n\nSCARTARE\n${drop.map(line).join("\n") || "-"}\n`;
+}
+async function copyText(){
+  const txt = selectionText();
+  document.getElementById("copy-text").value = txt;
+  const status = document.getElementById("copy-status");
+  try { await navigator.clipboard.writeText(txt); status.textContent = "Copiato negli appunti."; }
+  catch(e){ status.textContent = "Copia automatica non disponibile: seleziona il testo e copialo a mano."; }
+}
+
+document.getElementById("groups").addEventListener("change", e => {
+  if (e.target.matches("input[type=checkbox]")){ ui.sel[e.target.id.slice(3)] = e.target.checked; ui.mode = "sel"; apply(); }
+});
+document.getElementById("groups").addEventListener("click", e => {
+  const g = e.target.closest("[data-group]");
+  if (g){ const items = PROPOSALS.filter(p => p.g === g.dataset.group); const v = !items.every(p => ui.sel[p.id]); items.forEach(p => ui.sel[p.id] = v); ui.mode = "sel"; apply(); }
+  const s = e.target.closest("[data-show]");
+  if (s) show(s.dataset.show);
+});
+document.querySelectorAll("#mode button").forEach(b => b.addEventListener("click", () => { ui.mode = b.dataset.mode; apply(); }));
+document.querySelectorAll("#view button").forEach(b => b.addEventListener("click", () => { ui.view = b.dataset.view; apply(); }));
+document.querySelectorAll("[role=tab]").forEach(b => b.addEventListener("click", () => { ui.tab = b.dataset.tab; apply(); window.scrollTo({top: 0}); }));
+document.getElementById("pins").addEventListener("change", e => { ui.pins = e.target.checked; apply(); });
+frame.addEventListener("click", e => {
+  const a = e.target.closest("a, button");
+  if (!a || a.classList.contains("pin")) return;
+  if (a.matches("a")) e.preventDefault();
+  if (a.dataset.goto && document.querySelector(`[data-screen="${a.dataset.goto}"]`)){ ui.tab = a.dataset.goto; apply(); frame.scrollIntoView({block: "start"}); }
+});
+const dlg = document.getElementById("copy-dialog");
+document.getElementById("copy").addEventListener("click", () => { copyText(); dlg.showModal(); });
+document.getElementById("copy-again").addEventListener("click", copyText);
+document.getElementById("copy-close").addEventListener("click", () => dlg.close());
+dlg.addEventListener("keydown", e => {
+  if (e.key !== "Tab") return;
+  const items = [...dlg.querySelectorAll("button, textarea, a[href], input")].filter(el => !el.disabled);
+  const first = items[0], last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+});
+
+window.UX = {PRODUCT, PROPOSALS, GROUPS, ui, apply, selectionText};
+document.title = "Proposte UX · " + PRODUCT;
+addPins();
+apply();
+</script>
+</body>
+</html>
